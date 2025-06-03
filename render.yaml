@@ -8,7 +8,7 @@ services:
     name: gremory-chat-api
     repo: https://github.com/vkstark/gremory-backend  # Update with your repo
     region: oregon  # Choose your preferred region
-    plan: starter  # or free for development
+    plan: free  # or free for development
     branch: main
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
@@ -57,40 +57,6 @@ services:
       - key: PORT
         value: "8000"
 
-  # Optional: Background worker for heavy AI processing
-  - type: worker
-    runtime: python
-    name: gremory-worker
-    repo: https://github.com/vkstark/gremory-backend
-    branch: main
-    buildCommand: pip install -r requirements.txt
-    startCommand: python worker.py  # If you have background tasks
-    envVars:
-      - key: GOOGLE_API_KEY
-        sync: false
-      - key: LOG_LEVEL
-        value: "INFO"
-      - fromGroup: chat-api-settings
-
-  # Optional: Redis for caching API responses
-  - type: keyvalue
-    name: gremory-cache
-    plan: free
-    maxmemoryPolicy: allkeys-lru
-    ipAllowList:
-      - source: 0.0.0.0/0
-        description: Allow all (adjust for production security)
-
-  # Optional: PostgreSQL for storing chat history/analytics
-  # - type: postgresql
-  #   name: gremory-db
-  #   databaseName: gremory
-  #   user: gremory_user
-  #   plan: free
-  #   ipAllowList:
-  #     - source: 0.0.0.0/0
-  #       description: Allow API access
-
 # Environment variable groups
 envVarGroups:
   - name: chat-api-settings
@@ -111,24 +77,24 @@ envVarGroups:
 # ===================================================
 
 # If you prefer Docker deployment, use this instead:
-services_docker:
-  - type: web
-    runtime: docker
-    name: gremory-chat-api-docker
-    repo: https://github.com/vkstark/gremory-backend
-    region: oregon
-    plan: starter
-    branch: main
-    dockerfilePath: ./Dockerfile
-    healthCheckPath: /health
-    scaling:
-      minInstances: 1
-      maxInstances: 5
-      targetMemoryPercent: 80
-      targetCPUPercent: 80
-    envVars:
-      - key: GOOGLE_API_KEY
-        sync: false
-      - key: PORT
-        value: "8000"
-      - fromGroup: chat-api-settings
+# services_docker:
+#   - type: web
+#     runtime: docker
+#     name: gremory-chat-api-docker
+#     repo: https://github.com/vkstark/gremory-backend
+#     region: oregon
+#     plan: starter
+#     branch: main
+#     dockerfilePath: ./Dockerfile
+#     healthCheckPath: /health
+#     scaling:
+#       minInstances: 1
+#       maxInstances: 5
+#       targetMemoryPercent: 80
+#       targetCPUPercent: 80
+#     envVars:
+#       - key: GOOGLE_API_KEY
+#         sync: false
+#       - key: PORT
+#         value: "8000"
+#       - fromGroup: chat-api-settings
