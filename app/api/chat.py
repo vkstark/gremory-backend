@@ -1,34 +1,17 @@
-from typing import Dict, Optional
+from typing import Optional
 from enum import Enum
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
-import os
-from contextlib import asynccontextmanager
 
-from app.models.config import APIResponse
+from app.configs.config import APIResponse
 from app.services.chat_service import ChatService
 from app.logger import logger
 
-# Global chat service instance
+# Create router instead of FastAPI app
+router = APIRouter()
+
+# Global chat service instance for this router
 chat_service: Optional[ChatService] = None
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Startup
-    global chat_service
-    chat_service = ChatService()
-    await chat_service.initialize()
-    yield
-    # Shutdown
-    if chat_service:
-        await chat_service.cleanup()
-
-app = FastAPI(
-    title="AI Chat API",
-    description="API for chatting with various AI models",
-    version="1.0.0",
-    lifespan=lifespan
-)
 
 class SupportedModels(str, Enum):
     OLLAMA_QWEN = "ollama_qwen"
@@ -37,26 +20,46 @@ class SupportedModels(str, Enum):
 class UserInput(BaseModel):
     lm_name: SupportedModels
     user_query: str = Field(..., min_length=1, max_length=10000)
-
+    
 
 def get_chat_service() -> ChatService:
     if chat_service is None:
         raise HTTPException(status_code=500, detail="Chat service not initialized")
     return chat_service
 
-@app.get("/")
-def read_root():
-    return {"message": "AI Chat API", "status": "healthy"}
+# Initialize chat service for this router (called from main.py)
+async def initialize_chat_service():
+    global chat_service
+    if chat_service is None:
+        chat_service = ChatService()
+        await chat_service.initialize()
+        logger.info("Chat service initialized for chat router")
 
-@app.get("/health")
+# Cleanup chat service (called from main.py)
+async def cleanup_chat_service():
+    global chat_service
+    if chat_service:
+        await chat_service.cleanup()
+        chat_service = None
+        logger.info("Chat service cleaned up for chat router")
+
+@router.get("/")
+def read_chat_root():
+    return {
+        "message": "AI Chat API", 
+        "status": "healthy",
+        "endpoints": ["/chat", "/models"]
+    }
+
+@router.get("/health")
 def health_check():
     return {"status": "healthy", "service": "ai-chat-api"}
 
-@app.get("/models")
+@router.get("/models")
 def get_supported_models():
     return {"supported_models": [model.value for model in SupportedModels]}
 
-@app.post("/chat", response_model=APIResponse)
+@router.post("/chat", response_model=APIResponse)
 async def chat(
     data: UserInput, 
     service: ChatService = Depends(get_chat_service)

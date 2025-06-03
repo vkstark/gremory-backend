@@ -5,7 +5,7 @@ from langchain_ollama.chat_models import ChatOllama
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.language_models.base import BaseLanguageModel
 
-from app.models.config import APIResponse
+from app.configs.config import APIResponse
 from app.logger import logger
 from app.config import settings
 
