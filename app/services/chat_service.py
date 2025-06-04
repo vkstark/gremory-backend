@@ -1,9 +1,10 @@
-
 from typing import Dict, Optional, Any, List
 import os
 import re
+import json
 from langchain_ollama.chat_models import ChatOllama
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
 from langchain_core.language_models.base import BaseLanguageModel
 from langchain_core.messages import (
     SystemMessage, 
@@ -12,8 +13,6 @@ from langchain_core.messages import (
     trim_messages,
     RemoveMessage
 )
-from langgraph.checkpoint.memory import MemorySaver
-from langgraph.graph import START, MessagesState, StateGraph
 
 from app.configs.config import APIResponse
 from app.logger import logger
@@ -25,13 +24,14 @@ class ChatService:
         self.models: Dict[str, BaseLanguageModel] = {}
         self.model_mapping = {
             "ollama_qwen": "qwen3:8b",
-            "gemini_2o_flash": "gemini-2.0-flash"
+            "ollama_llama": "llama3.2:latest",
+            "gemini_2o_flash": "gemini-2.0-flash",
+            "openai_gpt4": "gpt-4o",
         }
         self.system_prompt = self._get_system_prompt()
         
-        # History management
-        self.memory = MemorySaver()
-        self.apps: Dict[str, Any] = {}  # Store compiled graphs per model
+        # Centralized history management - one history per session, not per model
+        self.conversations: Dict[str, List[Any]] = {}  # session_id -> list of messages
         self.max_history_length = getattr(settings, 'MAX_HISTORY_LENGTH', 10)
         self.enable_summarization = getattr(settings, 'ENABLE_SUMMARIZATION', True)
         self.summary_threshold = getattr(settings, 'SUMMARY_THRESHOLD', 10)
@@ -42,12 +42,15 @@ class ChatService:
         return system_prompt
     
     async def initialize(self):
-        """Initialize models and apps on startup"""
+        """Initialize models on startup"""
         logger.info("Initializing chat service...")
         
         # Validate required environment variables
         if not settings.GOOGLE_API_KEY:
             logger.warning("GOOGLE_API_KEY not found in environment variables")
+        
+        if not settings.OPENAI_API_KEY:
+            logger.warning("OPENAI_API_KEY not found in environment variables")
         
         # Pre-initialize models that don't require API keys
         try:
@@ -58,17 +61,13 @@ class ChatService:
         except Exception as e:
             logger.error(f"Failed to initialize Ollama model: {str(e)}")
 
-        # Initialize apps for each model
-        for model_name in self.model_mapping.keys():
-            self._create_app(model_name)
-
         logger.info("Chat service initialization complete")
 
     async def cleanup(self):
         """Cleanup resources on shutdown"""
         logger.info("Cleaning up chat service...")
         self.models.clear()
-        self.apps.clear()
+        self.conversations.clear()
 
     def _get_or_create_model(self, model_name: str) -> BaseLanguageModel:
         """Get cached model or create new one"""
@@ -81,7 +80,7 @@ class ChatService:
         if model_name in self.models:
             return self.models[model_name]
         
-        # Create new model
+        # Create new model based on provider
         if 'gemini' in actual_model_name:
             if not settings.GOOGLE_API_KEY:
                 raise ValueError("Google API key not configured")
@@ -92,7 +91,24 @@ class ChatService:
                 timeout=30
             )
             logger.info(f"Created new Gemini model: {actual_model_name}")
-        else:
+            
+        elif 'openai' in model_name or 'gpt' in actual_model_name:
+            if not settings.OPENAI_API_KEY:
+                raise ValueError("OpenAI API key not configured")
+            
+            # Configure OpenAI model parameters
+            openai_config = {
+                'model': actual_model_name,
+                'api_key': settings.OPENAI_API_KEY,
+                'timeout': getattr(settings, 'OPENAI_TIMEOUT', 60),
+                'temperature': getattr(settings, 'OPENAI_TEMPERATURE', 0.7),
+                'max_tokens': getattr(settings, 'OPENAI_MAX_TOKENS', None),
+            }
+            
+            self.models[model_name] = ChatOpenAI(**openai_config)
+            logger.info(f"Created new OpenAI model: {actual_model_name}")
+            
+        else:  # Ollama models
             self.models[model_name] = ChatOllama(
                 model=actual_model_name
             )
@@ -100,82 +116,49 @@ class ChatService:
         
         return self.models[model_name]
 
-    def _create_app(self, model_name: str):
-        """Create LangGraph app with memory for a specific model"""
-        logger.debug(f"Creating LangGraph app for model: {model_name}")
-        
-        workflow = StateGraph(state_schema=MessagesState)
-        
-        def call_model(state: MessagesState):
-            logger.debug(f"call_model function called for {model_name}")
-            return self._call_model_with_history(state, model_name)
-        
-        workflow.add_node("model", call_model)
-        workflow.add_edge(START, "model")
-        
-        # Compile with memory checkpointer
-        self.apps[model_name] = workflow.compile(checkpointer=self.memory)
-        logger.info(f"Created LangGraph app for model: {model_name}")
-        logger.debug(f"Memory checkpointer type: {type(self.memory)}")
-        logger.debug(f"App compiled successfully for {model_name}")
+    def _get_session_history(self, session_id: str) -> List[Any]:
+        """Get conversation history for a session"""
+        if session_id not in self.conversations:
+            self.conversations[session_id] = []
+        return self.conversations[session_id]
 
-    def _call_model_with_history(self, state: MessagesState, model_name: str):
-        """Call model with conversation history management"""
-        model = self._get_or_create_model(model_name)
+    def _add_message_to_history(self, session_id: str, message: Any):
+        """Add a message to session history"""
+        if session_id not in self.conversations:
+            self.conversations[session_id] = []
+        self.conversations[session_id].append(message)
+
+    def _prepare_messages_for_model(self, session_id: str, current_message: str) -> List[Any]:
+        """Prepare message chain for model, handling history management"""
+        history = self._get_session_history(session_id)
         
-        # DEBUG: Log incoming state
-        logger.debug(f"[{model_name}] _call_model_with_history called")
-        logger.debug(f"[{model_name}] Incoming state messages count: {len(state['messages'])}")
-        for i, msg in enumerate(state["messages"]):
-            msg_type = type(msg).__name__
-            content_preview = msg.content[:50] + "..." if len(msg.content) > 50 else msg.content
-            logger.debug(f"[{model_name}] Message {i}: {msg_type} - '{content_preview}'")
-        
-        # Get message history (excluding current user input)
-        message_history = state["messages"][:-1]
-        current_message = state["messages"][-1]
-        
-        logger.debug(f"[{model_name}] Message history length: {len(message_history)}")
-        logger.debug(f"[{model_name}] Current message: {current_message.content}")
+        logger.debug(f"[{session_id}] Preparing messages. History length: {len(history)}")
         
         # Handle summarization if history is too long
-        if (self.enable_summarization and 
-            len(message_history) >= self.summary_threshold):
-            
-            logger.debug(f"[{model_name}] Triggering summarization (threshold: {self.summary_threshold})")
-            return self._handle_summarization(
-                model, message_history, current_message, state
-            )
+        if self.enable_summarization and len(history) >= self.summary_threshold:
+            logger.debug(f"[{session_id}] Triggering summarization (threshold: {self.summary_threshold})")
+            return self._handle_summarization_for_session(session_id, current_message)
         
         # Handle trimming if history exceeds max length
-        elif len(message_history) > self.max_history_length:
-            logger.debug(f"[{model_name}] Trimming messages (max length: {self.max_history_length})")
-            trimmed_messages = self._trim_messages(message_history)
-            messages = [SystemMessage(self.system_prompt)] + trimmed_messages + [current_message]
+        elif len(history) > self.max_history_length:
+            logger.debug(f"[{session_id}] Trimming messages (max length: {self.max_history_length})")
+            trimmed_history = self._trim_messages(history)
+            messages = [SystemMessage(self.system_prompt)] + trimmed_history + [HumanMessage(current_message)]
         else:
-            logger.debug(f"[{model_name}] Using full history (no trimming/summarization needed)")
-            messages = [SystemMessage(self.system_prompt)] + state["messages"]
+            logger.debug(f"[{session_id}] Using full history (no trimming/summarization needed)")
+            messages = [SystemMessage(self.system_prompt)] + history + [HumanMessage(current_message)]
         
-        # DEBUG: Log final message chain being sent to model
-        logger.debug(f"[{model_name}] Final message chain length: {len(messages)}")
-        for i, msg in enumerate(messages):
-            msg_type = type(msg).__name__
-            content_preview = msg.content[:100] + "..." if len(msg.content) > 100 else msg.content
-            logger.debug(f"[{model_name}] Final Message {i}: {msg_type} - '{content_preview}'")
-        
-        # Invoke model
-        logger.debug(f"[{model_name}] Invoking model with {len(messages)} messages")
-        response = model.invoke(messages)
-        
-        # DEBUG: Log model response
-        response_preview = response.content[:100] + "..." if len(response.content) > 100 else response.content
-        logger.debug(f"[{model_name}] Model response: '{response_preview}'")
-        
-        return {"messages": response}
+        return messages
 
-    def _handle_summarization(self, model, message_history: List, current_message, state):
+    def _handle_summarization_for_session(self, session_id: str, current_message: str) -> List[Any]:
         """Handle conversation summarization when history gets too long"""
         try:
+            history = self._get_session_history(session_id)
+            
+            # Use the first available model for summarization (or you could make this configurable)
+            model_name = list(self.model_mapping.keys())[0]
+            model = self._get_or_create_model(model_name)
+            
             # Create summary prompt
             summary_prompt = (
                 "Distill the above chat messages into a single summary message. "
@@ -185,34 +168,25 @@ class ChatService:
             
             # Generate summary
             summary_message = model.invoke(
-                message_history + [HumanMessage(summary_prompt)]
+                history + [HumanMessage(summary_prompt)]
             )
             
-            # Create deletion instructions for old messages
-            delete_messages = [RemoveMessage(id=m.id) for m in state["messages"][:-1]]
+            # Replace history with summary
+            self.conversations[session_id] = [AIMessage(content=f"[Summary of previous conversation]: {summary_message.content}")]
             
-            # Create new human message (to reset ID)
-            human_message = HumanMessage(current_message.content)
-            
-            # Generate response with summary context
-            system_message = SystemMessage(
-                self.system_prompt + 
-                "\n\nThe provided chat history includes a summary of the earlier conversation."
-            )
-            response = model.invoke([system_message, summary_message, human_message])
-            
-            # Return updates: summary, current message, response, and deletions
-            return {
-                "messages": [summary_message, human_message, response] + delete_messages
-            }
+            # Return messages for current request
+            return [
+                SystemMessage(self.system_prompt + "\n\nThe conversation history includes a summary of the earlier conversation."),
+                self.conversations[session_id][0],  # Summary message
+                HumanMessage(current_message)
+            ]
             
         except Exception as e:
             logger.error(f"Summarization failed: {str(e)}, falling back to trimming")
             # Fallback to trimming
-            trimmed_messages = self._trim_messages(message_history)
-            messages = [SystemMessage(self.system_prompt)] + trimmed_messages + [current_message]
-            response = model.invoke(messages)
-            return {"messages": response}
+            history = self._get_session_history(session_id)
+            trimmed_history = self._trim_messages(history)
+            return [SystemMessage(self.system_prompt)] + trimmed_history + [HumanMessage(current_message)]
 
     def _trim_messages(self, messages: List) -> List:
         """Trim messages to fit within max history length"""
@@ -228,21 +202,59 @@ class ChatService:
         
         return trimmer.invoke(messages)
 
-    def _extract_final_answer(self, output: str) -> Dict[str, Optional[str]]:
+    def _extract_final_answer(self, output: str) -> Dict[str, Any]:
         """Extract reasoning and answer from model output"""
         if not output:
             return {'reasoning': None, 'answer': ''}
         
-        # Look for thinking tags
+        # Look for <think> tags for reasoning (separate from JSON "thought" field)
         reasoning_match = re.search(r'<think>(.*?)</think>', output, flags=re.DOTALL)
         
-        # Remove thinking tags from answer
-        answer = re.sub(r'<think>.*?</think>', '', output, flags=re.DOTALL).strip()
+        # Remove <think> tags from answer but keep everything else including JSON with "thought" field
+        answer_text = re.sub(r'<think>.*?</think>', '', output, flags=re.DOTALL).strip()
+        
+        # Try to parse the answer as JSON
+        parsed_answer = self._try_parse_json_answer(answer_text)
         
         return {
             'reasoning': reasoning_match.group(1).strip() if reasoning_match else None,
-            'answer': answer if answer else output  # Fallback to original output
+            'answer': parsed_answer if parsed_answer is not None else (answer_text if answer_text else output)
         }
+
+    def _try_parse_json_answer(self, text: str) -> Optional[Dict[str, Any]]:
+        """Try to parse the answer text as JSON, return None if not valid JSON"""
+        if not text:
+            return None
+        
+        # Try to extract JSON from markdown code blocks first
+        json_match = re.search(r'```json\s*\n(.*?)\n```', text, flags=re.DOTALL)
+        if json_match:
+            json_text = json_match.group(1).strip()
+            try:
+                parsed_json = json.loads(json_text)
+                
+                # Check if there's additional text after the JSON block
+                remaining_text = re.sub(r'```json\s*\n.*?\n```', '', text, flags=re.DOTALL).strip()
+                
+                if remaining_text:
+                    # If there's additional text, include it in the response
+                    return {
+                        "structured_response": parsed_json,
+                        "additional_text": remaining_text
+                    }
+                else:
+                    # Return just the JSON if that's all there is
+                    return parsed_json
+                    
+            except json.JSONDecodeError:
+                logger.debug("Failed to parse JSON from markdown code block")
+        
+        # Try to parse the entire text as JSON
+        try:
+            return json.loads(text.strip())
+        except json.JSONDecodeError:
+            logger.debug("Text is not valid JSON, returning as string")
+            return None
 
     async def get_ai_response(
         self, 
@@ -250,7 +262,7 @@ class ChatService:
         user_prompt: str, 
         session_id: str = "default"
     ) -> APIResponse:
-        """Get AI response with conversation history"""
+        """Get AI response with shared conversation history across models"""
         api_response = APIResponse()
         
         try:
@@ -258,62 +270,46 @@ class ChatService:
             logger.debug(f"Model: {model_name}, Session: {session_id}")
             logger.debug(f"User prompt: '{user_prompt}'")
             
-            # Ensure app exists for this model
-            if model_name not in self.apps:
-                logger.debug(f"Creating new app for model: {model_name}")
-                self._create_app(model_name)
+            # Get the model
+            model = self._get_or_create_model(model_name)
             
-            app = self.apps[model_name]
+            # Prepare messages with shared history
+            messages = self._prepare_messages_for_model(session_id, user_prompt)
             
-            # DEBUG: Check current state before invoke
-            try:
-                current_state = app.get_state(config={"configurable": {"thread_id": session_id}})
-                if current_state.values and "messages" in current_state.values:
-                    existing_messages = current_state.values["messages"]
-                    logger.debug(f"[{model_name}] Existing history length: {len(existing_messages)}")
-                    for i, msg in enumerate(existing_messages):
-                        msg_type = type(msg).__name__
-                        content_preview = msg.content[:50] + "..." if len(msg.content) > 50 else msg.content
-                        logger.debug(f"[{model_name}] Existing Message {i}: {msg_type} - '{content_preview}'")
-                else:
-                    logger.debug(f"[{model_name}] No existing history found")
-            except Exception as e:
-                logger.debug(f"[{model_name}] Could not retrieve existing state: {str(e)}")
-            
-            logger.info(f"Invoking model {model_name} with prompt length: {len(user_prompt)} for session: {session_id}")
-            
-            # Invoke with conversation history
-            result = app.invoke(
-                {"messages": [HumanMessage(user_prompt)]},
-                config={"configurable": {"thread_id": session_id}}
-            )
-            
-            # DEBUG: Log the complete result
-            logger.debug(f"[{model_name}] Complete result messages count: {len(result['messages'])}")
-            for i, msg in enumerate(result["messages"]):
+            # DEBUG: Log final message chain being sent to model
+            logger.debug(f"[{model_name}] Final message chain length: {len(messages)}")
+            for i, msg in enumerate(messages):
                 msg_type = type(msg).__name__
-                content_preview = msg.content[:50] + "..." if len(msg.content) > 50 else msg.content
-                logger.debug(f"[{model_name}] Result Message {i}: {msg_type} - '{content_preview}'")
+                content_preview = msg.content[:100] + "..." if len(msg.content) > 100 else msg.content
+                logger.debug(f"[{model_name}] Final Message {i}: {msg_type} - '{content_preview}'")
             
-            # Get the latest AI response
-            latest_message = result["messages"][-1]
+            # Invoke model
+            logger.debug(f"[{model_name}] Invoking model with {len(messages)} messages")
+            response = model.invoke(messages)
             
-            # Log the raw response for debugging (truncated)
-            content_preview = latest_message.content[:200] + "..." if len(latest_message.content) > 200 else latest_message.content
-            logger.debug(f"Model response preview: {content_preview}")
+            # Add user message and AI response to shared history
+            self._add_message_to_history(session_id, HumanMessage(user_prompt))
+            self._add_message_to_history(session_id, AIMessage(response.content))
+            
+            # DEBUG: Log model response
+            response_preview = response.content[:100] + "..." if len(response.content) > 100 else response.content
+            logger.debug(f"[{model_name}] Model response: '{response_preview}'")
             
             # Extract the final answer
-            extracted = self._extract_final_answer(latest_message.content)
+            extracted = self._extract_final_answer(response.content)
+            
+            # Set up the API response data structure
+            api_response.code = 0  # Ensure success code is set
             api_response.data = {
                 "answer": extracted['answer'],
                 "model_used": model_name,
                 "session_id": session_id,
                 "has_reasoning": extracted['reasoning'] is not None,
-                "message_count": len(result["messages"])
+                "message_count": len(self._get_session_history(session_id))
             }
             
             # Optionally include reasoning in response for debugging
-            if extracted['reasoning'] and settings.INCLUDE_REASONING:
+            if extracted['reasoning'] and hasattr(settings, 'INCLUDE_REASONING') and settings.INCLUDE_REASONING:
                 api_response.data["reasoning"] = extracted['reasoning']
             
             logger.debug(f"=== AI RESPONSE END ===")
@@ -339,18 +335,7 @@ class ChatService:
         api_response = APIResponse()
         
         try:
-            if not model_name:
-                model_name = list(self.model_mapping.keys())[0]  # Use first available model
-            
-            if model_name not in self.apps:
-                self._create_app(model_name)
-            
-            app = self.apps[model_name]
-            
-            # Get state for the session
-            state = app.get_state(config={"configurable": {"thread_id": session_id}})
-            
-            messages = state.values.get("messages", []) if state.values else []
+            messages = self._get_session_history(session_id)
             
             # Convert messages to serializable format
             history = []
@@ -362,6 +347,7 @@ class ChatService:
                         "timestamp": getattr(msg, 'timestamp', None)
                     })
             
+            api_response.code = 0
             api_response.data = {
                 "session_id": session_id,
                 "messages": history,
@@ -382,26 +368,10 @@ class ChatService:
         api_response = APIResponse()
         
         try:
-            # Clear from all model apps
-            for model_name, app in self.apps.items():
-                try:
-                    # Get current state
-                    state = app.get_state(config={"configurable": {"thread_id": session_id}})
-                    if state.values and "messages" in state.values:
-                        # Create delete messages for all existing messages
-                        delete_messages = [
-                            RemoveMessage(id=m.id) 
-                            for m in state.values["messages"] 
-                            if hasattr(m, 'id')
-                        ]
-                        if delete_messages:
-                            app.invoke(
-                                {"messages": delete_messages},
-                                config={"configurable": {"thread_id": session_id}}
-                            )
-                except Exception as e:
-                    logger.warning(f"Error clearing history for model {model_name}: {str(e)}")
+            if session_id in self.conversations:
+                del self.conversations[session_id]
             
+            api_response.code = 0
             api_response.data = {"session_id": session_id}
             api_response.msg = "Conversation history cleared successfully"
             return api_response
@@ -414,19 +384,10 @@ class ChatService:
             return api_response
 
     def update_system_prompt(self, new_prompt: str):
-        """Update system prompt and reinitialize apps"""
+        """Update system prompt"""
         logger.info("Updating system prompt...")
         self.system_prompt = new_prompt
-        
-        # Clear existing models and apps to force reinitialization with new prompt
-        self.models.clear()
-        self.apps.clear()
-        
-        # Reinitialize apps for each model
-        for model_name in self.model_mapping.keys():
-            self._create_app(model_name)
-        
-        logger.info("System prompt updated. Apps reinitialized.")
+        logger.info("System prompt updated.")
 
     def get_current_system_prompt(self) -> str:
         """Get the current system prompt"""
@@ -448,3 +409,66 @@ class ChatService:
         
         logger.info(f"History settings updated: max_length={self.max_history_length}, "
                    f"summarization={self.enable_summarization}, threshold={self.summary_threshold}")
+
+    def update_openai_settings(
+        self,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+        timeout: Optional[int] = None
+    ):
+        """Update OpenAI-specific settings (requires model recreation)"""
+        if temperature is not None:
+            settings.OPENAI_TEMPERATURE = temperature
+        if max_tokens is not None:
+            settings.OPENAI_MAX_TOKENS = max_tokens
+        if timeout is not None:
+            settings.OPENAI_TIMEOUT = timeout
+        
+        # Clear cached OpenAI models to force recreation with new settings
+        openai_models = [k for k in self.models.keys() if 'openai' in k]
+        for model_key in openai_models:
+            del self.models[model_key]
+        
+        logger.info(f"OpenAI settings updated. Affected models will be recreated on next use.")
+
+    def get_available_models(self) -> List[str]:
+        """Get list of available model names"""
+        return list(self.model_mapping.keys())
+
+    def get_model_info(self) -> Dict[str, Dict[str, str]]:
+        """Get detailed information about available models"""
+        model_info = {}
+        for key, value in self.model_mapping.items():
+            provider = "Ollama"
+            if 'gemini' in value:
+                provider = "Google"
+            elif 'openai' in key or 'gpt' in value:
+                provider = "OpenAI"
+            
+            model_info[key] = {
+                "actual_model": value,
+                "provider": provider,
+                "status": "initialized" if key in self.models else "not_initialized"
+            }
+        
+        return model_info
+
+    def switch_model_mid_conversation(self, session_id: str, new_model: str) -> bool:
+        """
+        Switch to a different model while preserving conversation history.
+        Returns True if successful, False otherwise.
+        """
+        try:
+            if new_model not in self.model_mapping:
+                logger.error(f"Invalid model name: {new_model}")
+                return False
+            
+            # Ensure the new model is initialized
+            self._get_or_create_model(new_model)
+            
+            logger.info(f"Model switched to {new_model} for session {session_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error switching model: {str(e)}")
+            return False

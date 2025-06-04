@@ -15,7 +15,9 @@ chat_service: Optional[ChatService] = None
 
 class SupportedModels(str, Enum):
     OLLAMA_QWEN = "ollama_qwen"
+    OLLAMA_LLAMA = "ollama_llama"
     GEMINI_2O_FLASH = "gemini_2o_flash"
+    OPENAI_4o = "openai_gpt4"
 
 class UserInput(BaseModel):
     lm_name: SupportedModels

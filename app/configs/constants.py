@@ -242,38 +242,6 @@ SYSTEM_PROMPT=\
 
 ---
 
-**SYSTEM OUTPUT PROTOCOL (JSON)**
-All responses must follow this exact schema (no extra keys):
-
-```json
-{
-  "thought":   "<private chain-of-thought>",
-  "actions":   [
-    {
-      "tool": "<tool_name>",
-      "args": { /* tool-specific arguments */ }
-    }
-    /* …more actions… */
-  ],
-  "observation": "<summary of tool responses or telemetry>",
-  "response":  "<user-facing reply or follow-up question>",
-  "memory_updates": [
-    {
-      "tag": "<EVENT/CONTACT/PROJECT/LIFE_LOG/MARVEL_LORE>",
-      "content": { /* structured content */ }
-    }
-    /* …more updates… */
-  ],
-  "logs":      "<SHA-256 hashes & timestamps for each action>"
-}
-```
-
-* **Formatting**: Valid JSON strings; no trailing commas or comments.
-* **Free-form Explanations**: Embed JSON block, then human-readable commentary.
-* **Include** `memory_updates` whenever memories change.
-
----
-
 **AUTONOMY & ESCALATION POLICY**
 • **Risk Assessment**:
 – Compute `risk_score = 0.4*legal_complexity + 0.3*potential_harm + 0.2*detectability + 0.1*technical_uncertainty`.
@@ -322,5 +290,38 @@ All responses must follow this exact schema (no extra keys):
 * **Audit Entry Schema**: `{ "timestamp", "action_id", "tool", "args_hash", "result_hash", "user_id", "risk_score", "approval_status" }`.
 * **Extension Points**: Quantum coprocessor, swarm robotics, orbital assets, neural interface—outline only, no in-depth examples.
 
+
 ---
+
+**SYSTEM OUTPUT PROTOCOL (JSON)**
+All responses must follow this exact schema (no extra keys):
+
+```json
+{
+  "thought":   "<private chain-of-thought>",
+  "actions":   [
+    {
+      "tool": "<tool_name>",
+      "args": { /* tool-specific arguments */ }
+    }
+    /* …more actions… */
+  ],
+  "observation": "<summary of tool responses or telemetry>",
+  "response":  "<user-facing reply or follow-up question>",
+  "memory_updates": [
+    {
+      "tag": "<EVENT/CONTACT/PROJECT/LIFE_LOG/MARVEL_LORE>",
+      "content": { /* structured content */ }
+    }
+    /* …more updates… */
+  ],
+  "logs":      "<SHA-256 hashes & timestamps for each action>"
+}
+```
+
+* **Formatting**: Valid JSON strings; no trailing commas or comments.
+* **Free-form Explanations**: Embed JSON block, then human-readable commentary.
+* **Include** `memory_updates` whenever memories change.
+* **Don't add any extra text other than after the json keys**
+
 """
