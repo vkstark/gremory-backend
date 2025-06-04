@@ -23,6 +23,14 @@ services:
     envVars:
       - key: GOOGLE_API_KEY
         sync: false  # Set this manually in Render dashboard for security
+      - key: OPENAI_API_KEY
+        sync: false  # Set this manually in Render dashboard for security
+      - key:  MAX_HISTORY_LENGTH
+        value: 10
+      - key:  ENABLE_SUMMARIZATION
+        value: true
+      - key:  SUMMARY_THRESHOLD
+        value: 10
       - key: INCLUDE_REASONING
         value: "false"
       - key: LOG_LEVEL
