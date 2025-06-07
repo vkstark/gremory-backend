@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings
+from pydantic import Field
 from typing import Optional
 
 class Settings(BaseSettings):
@@ -25,6 +26,29 @@ class Settings(BaseSettings):
     DB_SCHEMA: str = "public"
     DB_MIN_CONNECTIONS: int = 1
     DB_MAX_CONNECTIONS: int = 10
+    # Connection pool settings
+    DB_POOL_SIZE: int = 20
+    DB_MAX_OVERFLOW: int = 30
+    DB_POOL_TIMEOUT: int = 30
+    DB_POOL_RECYCLE: int = 3600
+    DB_POOL_PRE_PING: bool = True
+    
+    # Query settings
+    DB_QUERY_TIMEOUT: int = 30
+    DB_SLOW_QUERY_THRESHOLD: float = 1.0
+    
+    # Retry settings
+    DB_MAX_RETRIES: int = 3
+    DB_RETRY_DELAY: float = 0.5
+    
+    # Security
+    DB_ENABLE_SSL: bool = True
+    DB_SSL_CERT_PATH: Optional[str] = None
+    
+    # Logging
+    DB_LOG_LEVEL: str = "INFO"
+    DB_LOG_QUERIES: bool = False
+    DB_LOG_SLOW_QUERIES: bool = True
     
     class Config:
         env_file = ".env"

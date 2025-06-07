@@ -9,7 +9,7 @@ import os
 load_dotenv()
 
 # Import routers
-from app.api import chat
+from app.api import chat, user_history
 from app.logger import logger
 
 # # Store initialization functions for all routers
@@ -17,6 +17,10 @@ router_initializers = {
     "chat": {
         "init": chat.initialize_chat_service,
         "cleanup": chat.cleanup_chat_service
+    },
+    "user_history": {
+        "init": user_history.initialize_user_history_service,
+        "cleanup": user_history.cleanup_user_history_service
     }
     # Add other routers here as you create them
 }
@@ -73,6 +77,7 @@ def read_root():
         "docs": "/docs",
         "available_apis": {
             "chat": "/api/v1/chat",
+            "user_history": "/api/v1/user",
             "models": "/api/v1/models",
             "health": "/health"
         }
@@ -87,6 +92,13 @@ app.include_router(
     chat.router, 
     prefix="/api/v1", 
     tags=["chat"]
+)
+
+# Include the user history router
+app.include_router(
+    user_history.router, 
+    prefix="/api/v1", 
+    tags=["user_history"]
 )
 
 # Add other routers here as you create them
