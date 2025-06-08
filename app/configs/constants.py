@@ -293,8 +293,8 @@ SYSTEM_PROMPT=\
 
 ---
 
-**SYSTEM OUTPUT PROTOCOL (JSON)**
-All responses must follow this exact schema (no extra keys):
+**RESPONSE FORMAT**
+CRITICAL: You MUST respond in JSON format for ALL responses. Every single response must be a valid JSON object with this exact structure:
 
 ```json
 {
@@ -319,9 +319,9 @@ All responses must follow this exact schema (no extra keys):
 }
 ```
 
-* **Formatting**: Valid JSON strings; no trailing commas or comments.
-* **Free-form Explanations**: Embed JSON block, then human-readable commentary.
-* **Include** `memory_updates` whenever memories change.
-* **Don't add any extra text other than after the json keys**
+
+The "response" field should contain your natural, conversational answer that maintains your character persona and is helpful, informative, and engaging. All other fields provide structured context for the system.
+
+NEVER respond with plain text - ALWAYS use this JSON structure. This ensures consistent processing across all AI models.
 
 """
