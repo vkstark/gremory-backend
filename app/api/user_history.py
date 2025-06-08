@@ -58,12 +58,6 @@ def parse_ai_response_messages_inplace(conversation):
     """
     Parse AI response messages in the conversation and replace content with parsed JSON.
     Works with Pydantic response objects that have success, message, and data attributes.
-    
-    Args:
-        conversation: Pydantic model object with data.messages attribute
-    
-    Returns:
-        Same conversation object with modified AI response message contents
     """
     if not conversation or not hasattr(conversation, 'data'):
         print("Invalid conversation structure - no data attribute found")
@@ -73,24 +67,18 @@ def parse_ai_response_messages_inplace(conversation):
         print("Invalid conversation structure - no messages attribute found in data")
         return conversation
     
-    # Access messages from the nested data object
     messages = conversation.data.messages
     
     for message in messages:
-        # Check if this is an AI response message
         if hasattr(message, 'message_type') and message.message_type == 'ai_response':
             if hasattr(message, 'content') and message.content:
-                # Use the helper function to extract JSON from the content
                 json_match = re.search(r'```json\s*\n(.*?)\n```', message.content, flags=re.DOTALL)
                 
                 if json_match:
                     try:
-                        # Parse the JSON content
                         parsed_msg = json.loads(json_match.group(1).strip())
                         
-                        # Validate that parsed_msg is not None and has expected structure
                         if parsed_msg is not None and isinstance(parsed_msg, dict):
-                            # Replace the content with the parsed JSON
                             message.content = parsed_msg
                             print(f"Successfully parsed message ID: {message.id}")
                         else:
@@ -98,7 +86,6 @@ def parse_ai_response_messages_inplace(conversation):
                         
                     except json.JSONDecodeError as e:
                         print(f"Failed to parse JSON for message ID {message.id}: {e}")
-                        # Keep original content if parsing fails
                         continue
                     except Exception as e:
                         print(f"Unexpected error parsing message ID {message.id}: {e}")
@@ -129,7 +116,6 @@ async def get_user_history(
             sort_order=sort_order
         )
         
-        # Convert string parameters to enums
         conv_type_enum = convert_to_enum(conversation_type, ConversationType)
         conv_state_enum = convert_to_enum(conversation_state, ConversationState)
         
@@ -173,9 +159,13 @@ async def get_conversation_messages(
     sender_id: Optional[int] = Query(None, description="Filter by sender ID"),
     search_query: Optional[str] = Query(None, description="Search in message content"),
     include_deleted: bool = Query(False, description="Include deleted messages"),
+    include_conversation_details: bool = Query(False, description="Include full conversation details with messages"),
     service: UserHistoryService = Depends(get_user_history_service)
 ):
-    """Get messages for a specific conversation with pagination and filters"""
+    """
+    Get messages for a specific conversation with pagination and filters.
+    Can optionally include full conversation details.
+    """
     try:
         pagination = PaginationParams(
             page=page,
@@ -184,7 +174,6 @@ async def get_conversation_messages(
             sort_order=sort_order
         )
         
-        # Convert string parameters to enums
         msg_type_enum = convert_to_enum(message_type, MessageType)
         
         filters = MessageFilters(
@@ -194,12 +183,20 @@ async def get_conversation_messages(
             include_deleted=include_deleted
         )
         
-        messages = await service.get_messages_for_history(conversation_id, pagination, filters, user_id)
-        
-        if not messages.success:
-            return create_error_response(404, messages.message)
-        
-        return messages
+        if include_conversation_details:
+            # Return full conversation details with messages
+            conversation = await service.get_conversation_details(conversation_id, user_id)
+            if not conversation.success:
+                return create_error_response(404, conversation.message)
+            conversation = parse_ai_response_messages_inplace(conversation)
+            return conversation
+        else:
+            # Return only messages
+            messages = await service.get_messages_for_history(conversation_id, pagination, filters, user_id)
+            if not messages.success:
+                return create_error_response(404, messages.message)
+            return messages
+            
     except Exception as e:
         logger.error(f"Error getting messages for conversation {conversation_id}: {str(e)}")
         return create_error_response(500, "Internal server error", str(e))
@@ -227,24 +224,6 @@ async def create_new_chat_history(
         logger.error(f"Error creating chat history: {str(e)}")
         return create_error_response(500, "Internal server error", str(e))
 
-@router.put("/conversation/{conversation_id}/continue", response_model=ConversationResponse)
-async def continue_chat_history(
-    conversation_id: int,
-    user_id: Optional[int] = Query(None, description="User ID for access control"),
-    service: UserHistoryService = Depends(get_user_history_service)
-):
-    """Continue an existing chat history (reactivate if needed)"""
-    try:
-        updated_history = await service.continue_chat_history(conversation_id, user_id)
-        
-        if not updated_history.success:
-            return create_error_response(404, updated_history.message)
-        
-        return updated_history
-    except Exception as e:
-        logger.error(f"Error continuing chat history {conversation_id}: {str(e)}")
-        return create_error_response(500, "Internal server error", str(e))
-
 @router.post("/conversation/{conversation_id}/messages", response_model=MessageSentResponse)
 async def send_message_to_conversation(
     conversation_id: int,
@@ -253,7 +232,6 @@ async def send_message_to_conversation(
 ):
     """Send a message to a conversation"""
     try:
-        # Ensure the conversation_id in the path matches the request
         if request.conversation_id != conversation_id:
             return create_error_response(
                 400, 
@@ -277,7 +255,10 @@ async def update_conversation(
     user_id: Optional[int] = Query(None, description="User ID for access control"),
     service: UserHistoryService = Depends(get_user_history_service)
 ):
-    """Update conversation details"""
+    """
+    Update conversation details including name, description, state, and archive status.
+    Use conversation_state='archived' and include archive operation in context_data if needed.
+    """
     try:
         updated_conversation = await service.update_conversation(conversation_id, request, user_id)
         
@@ -287,24 +268,6 @@ async def update_conversation(
         return updated_conversation
     except Exception as e:
         logger.error(f"Error updating conversation {conversation_id}: {str(e)}")
-        return create_error_response(500, "Internal server error", str(e))
-
-@router.put("/conversation/{conversation_id}/archive", response_model=ConversationUpdatedResponse)
-async def archive_conversation(
-    conversation_id: int,
-    user_id: Optional[int] = Query(None, description="User ID for access control"),
-    service: UserHistoryService = Depends(get_user_history_service)
-):
-    """Archive a conversation"""
-    try:
-        archived_conversation = await service.archive_conversation(conversation_id, user_id)
-        
-        if not archived_conversation.success:
-            return create_error_response(404, archived_conversation.message)
-        
-        return archived_conversation
-    except Exception as e:
-        logger.error(f"Error archiving conversation {conversation_id}: {str(e)}")
         return create_error_response(500, "Internal server error", str(e))
 
 @router.delete("/conversation/{conversation_id}")
