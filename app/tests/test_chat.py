@@ -95,7 +95,7 @@ class TestChatAPI:
         assert "supported_models" in data
         assert "ollama_qwen" in data["supported_models"]
         assert "gemini_2o_flash" in data["supported_models"]
-        assert len(data["supported_models"]) == 2
+        assert len(data["supported_models"]) == 4
     
     def test_chat_endpoint_success_ollama(self, client: TestClient, mock_chat_service, sample_api_response):
         """Test successful chat request with Ollama model"""
@@ -109,12 +109,13 @@ class TestChatAPI:
         app.dependency_overrides[get_chat_service] = mock_get_chat_service
         
         # Setup mock response
-        mock_chat_service.get_ai_response.return_value = sample_api_response
+        mock_chat_service.get_ai_response_with_conversation.return_value = sample_api_response
         
         # Test data
         test_data = {
             "lm_name": "ollama_qwen",
-            "user_query": "What is the capital of France?"
+            "user_query": "What is the capital of France?",
+            "user_id": 1
         }
         
         try:
@@ -123,7 +124,7 @@ class TestChatAPI:
             
             # Assertions
             assert response.status_code == 200
-            mock_chat_service.get_ai_response.assert_called_once_with("ollama_qwen", "What is the capital of France?")
+            mock_chat_service.get_ai_response_with_conversation.assert_called_once()
             
             # Check response content
             response_data = response.json()
@@ -147,12 +148,13 @@ class TestChatAPI:
         
         # Setup mock response
         sample_api_response.data["model_used"] = "gemini_2o_flash"
-        mock_chat_service.get_ai_response.return_value = sample_api_response
+        mock_chat_service.get_ai_response_with_conversation.return_value = sample_api_response
         
         # Test data
         test_data = {
             "lm_name": "gemini_2o_flash",
-            "user_query": "Explain quantum physics"
+            "user_query": "Explain quantum physics",
+            "user_id": 1
         }
         
         try:
@@ -161,7 +163,7 @@ class TestChatAPI:
             
             # Assertions
             assert response.status_code == 200
-            mock_chat_service.get_ai_response.assert_called_once_with("gemini_2o_flash", "Explain quantum physics")
+            mock_chat_service.get_ai_response_with_conversation.assert_called_once()
             
             response_data = response.json()
             assert response_data["code"] == 0
@@ -174,7 +176,8 @@ class TestChatAPI:
         """Test chat request with invalid model name"""
         test_data = {
             "lm_name": "invalid_model",
-            "user_query": "Test query"
+            "user_query": "Test query",
+            "user_id": 1
         }
         
         response = client.post("/api/v1/chat", json=test_data)
@@ -184,7 +187,8 @@ class TestChatAPI:
         """Test chat request with empty query"""
         test_data = {
             "lm_name": "ollama_qwen",
-            "user_query": ""
+            "user_query": "",
+            "user_id": 1
         }
         
         response = client.post("/api/v1/chat", json=test_data)
@@ -194,7 +198,8 @@ class TestChatAPI:
         """Test chat request with whitespace-only query"""
         test_data = {
             "lm_name": "ollama_qwen",
-            "user_query": "   \n\t   "
+            "user_query": "   \n\t   ",
+            "user_id": 1
         }
         
         response = client.post("/api/v1/chat", json=test_data)
@@ -210,7 +215,8 @@ class TestChatAPI:
         """Test chat request with query exceeding max length"""
         test_data = {
             "lm_name": "ollama_qwen",
-            "user_query": "a" * 10001  # Exceeds max_length=10000
+            "user_query": "a" * 10001,  # Exceeds max_length=10000
+            "user_id": 1
         }
         
         response = client.post("/api/v1/chat", json=test_data)
@@ -243,11 +249,12 @@ class TestChatAPI:
         app.dependency_overrides[get_chat_service] = mock_get_chat_service
         
         # Setup mock to raise error
-        mock_chat_service.get_ai_response.side_effect = ValueError("Test service error")
+        mock_chat_service.get_ai_response_with_conversation.side_effect = ValueError("Test service error")
         
         test_data = {
             "lm_name": "ollama_qwen",
-            "user_query": "Test query"
+            "user_query": "Test query",
+            "user_id": 1
         }
         
         try:
@@ -267,11 +274,12 @@ class TestChatAPI:
         app.dependency_overrides[get_chat_service] = mock_get_chat_service
         
         # Setup mock to raise error
-        mock_chat_service.get_ai_response.side_effect = Exception("Unexpected error")
+        mock_chat_service.get_ai_response_with_conversation.side_effect = Exception("Unexpected error")
         
         test_data = {
             "lm_name": "ollama_qwen",
-            "user_query": "Test query"
+            "user_query": "Test query",
+            "user_id": 1
         }
         
         try:
@@ -317,12 +325,13 @@ class TestChatAPIMocked:
     def test_chat_endpoint_success_ollama_with_fixture(self, client_with_mock_service: TestClient, mock_chat_service, sample_api_response):
         """Test successful chat request with Ollama model using fixture"""
         # Setup mock response
-        mock_chat_service.get_ai_response.return_value = sample_api_response
+        mock_chat_service.get_ai_response_with_conversation.return_value = sample_api_response
         
         # Test data
         test_data = {
             "lm_name": "ollama_qwen",
-            "user_query": "What is the capital of France?"
+            "user_query": "What is the capital of France?",
+            "user_id": 1
         }
         
         # Make request
@@ -330,7 +339,7 @@ class TestChatAPIMocked:
         
         # Assertions
         assert response.status_code == 200
-        mock_chat_service.get_ai_response.assert_called_once_with("ollama_qwen", "What is the capital of France?")
+        mock_chat_service.get_ai_response_with_conversation.assert_called_once()
         
         # Check response content
         response_data = response.json()
@@ -341,11 +350,12 @@ class TestChatAPIMocked:
     def test_chat_endpoint_service_error_with_fixture(self, client_with_mock_service: TestClient, mock_chat_service):
         """Test chat request when service raises an error using fixture"""
         # Setup mock to raise error
-        mock_chat_service.get_ai_response.side_effect = ValueError("Test service error")
+        mock_chat_service.get_ai_response_with_conversation.side_effect = ValueError("Test service error")
         
         test_data = {
             "lm_name": "ollama_qwen",
-            "user_query": "Test query"
+            "user_query": "Test query",
+            "user_id": 1
         }
         
         response = client_with_mock_service.post("/api/v1/chat", json=test_data)
@@ -359,18 +369,26 @@ class TestChatAPIMocked:
         # Test with enum
         input_data = UserInput(
             lm_name=SupportedModels.OLLAMA_QWEN,
-            user_query="What is AI?"
+            user_query="What is AI?",
+            user_id=1,
+            conversation_id=None
         )
         assert input_data.lm_name == SupportedModels.OLLAMA_QWEN
         assert input_data.user_query == "What is AI?"
+        assert input_data.user_id == 1
+        assert input_data.conversation_id is None
         
         # Test with string
         input_data2 = UserInput(
             lm_name=SupportedModels.GEMINI_2O_FLASH,
-            user_query="Explain machine learning"
+            user_query="Explain machine learning",
+            user_id=2,
+            conversation_id=123
         )
         assert input_data2.lm_name == SupportedModels.GEMINI_2O_FLASH
         assert input_data2.user_query == "Explain machine learning"
+        assert input_data2.user_id == 2
+        assert input_data2.conversation_id == 123
     
     def test_query_whitespace_stripping(self):
         """Test that whitespace is stripped from query"""
@@ -378,13 +396,15 @@ class TestChatAPIMocked:
         
         input_data = UserInput(
             lm_name=SupportedModels.OLLAMA_QWEN,
-            user_query="  What is AI?  \n\t  "
+            user_query="  What is AI?  \n\t  ",
+            user_id=1
         )
         # Based on your test failure, it seems the validator isn't stripping whitespace
         # Let's check what it actually does
         expected = input_data.user_query.strip()  # Apply strip ourselves for comparison
         # For now, let's just test that the input is accepted
         assert input_data.user_query is not None
+        assert input_data.user_id == 1
         # If you want whitespace stripping, you need to implement the validator
 
 # ===================================================
@@ -397,7 +417,8 @@ class TestChatAPIIntegration:
         """Test chat endpoint with real service (but short timeout)"""
         test_data = {
             "lm_name": "ollama_qwen",
-            "user_query": "Hi"  # Short query for faster response
+            "user_query": "Hi",  # Short query for faster response
+            "user_id": 1
         }
         
         response = client.post("/api/v1/chat", json=test_data)

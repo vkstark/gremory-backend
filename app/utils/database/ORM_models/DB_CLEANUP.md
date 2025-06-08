@@ -1,4 +1,4 @@
--- Reset sequences to 1 for clean testing (test schema)
+-- Reset sequences to 1 for clean testing (gremory schema)
 DO $$
 DECLARE
     r RECORD;
@@ -10,17 +10,17 @@ BEGIN
         SELECT 'encrypted_messages'
     LOOP
         -- Clear the table first
-        EXECUTE format('TRUNCATE TABLE test.%I RESTART IDENTITY CASCADE', r.table_name);
+        EXECUTE format('TRUNCATE TABLE gremory.%I RESTART IDENTITY CASCADE', r.table_name);
         -- Reset sequence to 1
-        EXECUTE format('ALTER SEQUENCE test.%I_id_seq RESTART WITH 1', r.table_name);
-        RAISE NOTICE 'Reset BIGINT sequence for table: test.%', r.table_name;
+        EXECUTE format('ALTER SEQUENCE gremory.%I_id_seq RESTART WITH 1', r.table_name);
+        RAISE NOTICE 'Reset BIGINT sequence for table: gremory.%', r.table_name;
     END LOOP;
     
     -- Reset INTEGER sequences
     FOR r IN 
         SELECT table_name 
         FROM information_schema.tables 
-        WHERE table_schema = 'test' 
+        WHERE table_schema = 'gremory' 
         AND table_name IN (
             'users', 'conversations', 'user_sessions', 'user_preferences',
             'message_attachments', 'cross_device_session_sync', 'session_state_snapshots',
@@ -31,13 +31,13 @@ BEGIN
         )
     LOOP
         -- Clear the table first
-        EXECUTE format('TRUNCATE TABLE test.%I RESTART IDENTITY CASCADE', r.table_name);
+        EXECUTE format('TRUNCATE TABLE gremory.%I RESTART IDENTITY CASCADE', r.table_name);
         -- Reset sequence to 1
-        EXECUTE format('ALTER SEQUENCE test.%I_id_seq RESTART WITH 1', r.table_name);
-        RAISE NOTICE 'Reset INTEGER sequence for table: test.%', r.table_name;
+        EXECUTE format('ALTER SEQUENCE gremory.%I_id_seq RESTART WITH 1', r.table_name);
+        RAISE NOTICE 'Reset INTEGER sequence for table: gremory.%', r.table_name;
     END LOOP;
     
-    RAISE NOTICE 'All sequences have been reset to 1 for test schema';
+    RAISE NOTICE 'All sequences have been reset to 1 for gremory schema';
 END $$;
 
 
@@ -45,19 +45,19 @@ END $$;
 -- Check the tables
 SELECT 'Users' AS table_name, id::text AS record_id, username AS description
 FROM (
-    SELECT id, username FROM test.users ORDER BY id DESC LIMIT 3
+    SELECT id, username FROM gremory.users ORDER BY id DESC LIMIT 3
 ) AS users_sub
 
 UNION ALL
 
 SELECT 'Conversations', id::text, name
 FROM (
-    SELECT id, name FROM test.conversations ORDER BY id DESC LIMIT 3
+    SELECT id, name FROM gremory.conversations ORDER BY id DESC LIMIT 3
 ) AS conv_sub
 
 UNION ALL
 
 SELECT 'Messages', id::text, content
 FROM (
-    SELECT id, content FROM test.messages ORDER BY id DESC LIMIT 3
+    SELECT id, content FROM gremory.messages ORDER BY id DESC LIMIT 3
 ) AS msg_sub;

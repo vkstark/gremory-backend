@@ -552,3 +552,56 @@ This comprehensive database schema design provides a robust foundation for moder
 The architecture supports both current operational needs and future growth, with clear migration paths as applications scale from thousands to billions of messages. By implementing proper indexing, caching, and security measures from the beginning, organizations can build chatbot systems that deliver exceptional user experiences while maintaining data integrity and privacy compliance.
 
 **Critical success factors include comprehensive monitoring, regular performance optimization, and continuous adaptation based on user behavior patterns and business requirements**. The modular design allows for incremental implementation, enabling teams to prioritize features based on immediate needs while maintaining architectural flexibility for future enhancements.
+
+
+# DB Correction
+```sql
+-- Fix all sequences for all tables with autoincrement in 'test' schema
+DO $$
+DECLARE
+    r RECORD;
+BEGIN
+    -- Fix BIGINT tables (messages, encrypted_messages)
+    FOR r IN 
+        SELECT 'messages' AS table_name
+        UNION ALL
+        SELECT 'encrypted_messages'
+    LOOP
+        EXECUTE format('DROP SEQUENCE IF EXISTS gremory.%I_id_seq CASCADE', r.table_name);
+        EXECUTE format('CREATE SEQUENCE gremory.%I_id_seq AS BIGINT START WITH 1', r.table_name);
+        EXECUTE format('ALTER TABLE gremory.%I ALTER COLUMN id SET DEFAULT nextval(%L)', r.table_name, 'gremory.' || r.table_name || '_id_seq');
+        EXECUTE format('ALTER SEQUENCE gremory.%I_id_seq OWNED BY gremory.%I.id', r.table_name, r.table_name);
+        EXECUTE format('SELECT setval(%L, COALESCE((SELECT MAX(id) FROM gremory.%I), 1))', 'gremory.' || r.table_name || '_id_seq', r.table_name);
+        RAISE NOTICE 'Fixed BIGINT sequence for table: gremory.%', r.table_name;
+    END LOOP;
+    
+    -- Fix INTEGER tables
+    FOR r IN 
+        SELECT table_name 
+        FROM information_schema.tables 
+        WHERE table_schema = 'gremory' 
+        AND table_name IN (
+            'users', 'conversations', 'user_sessions', 'user_preferences',
+            'message_attachments', 'cross_device_session_sync', 'session_state_snapshots',
+            'message_nlp_analysis', 'intent_recognition', 'entity_extraction',
+            'function_execution_pipeline', 'api_call_metrics', 'function_performance_analytics',
+            'user_behavior_profiles', 'conversation_contexts', 'user_authentication',
+            'user_permissions', 'user_consent_records', 'data_processing_logs', 'encryption_keys'
+        )
+    LOOP
+        EXECUTE format('DROP SEQUENCE IF EXISTS gremory.%I_id_seq CASCADE', r.table_name);
+        EXECUTE format('CREATE SEQUENCE gremory.%I_id_seq AS INTEGER START WITH 1', r.table_name);
+        EXECUTE format('ALTER TABLE gremory.%I ALTER COLUMN id SET DEFAULT nextval(%L)', r.table_name, 'gremory.' || r.table_name || '_id_seq');
+        EXECUTE format('ALTER SEQUENCE gremory.%I_id_seq OWNED BY gremory.%I.id', r.table_name, r.table_name);
+        EXECUTE format('SELECT setval(%L, COALESCE((SELECT MAX(id) FROM gremory.%I), 1))', 'gremory.' || r.table_name || '_id_seq', r.table_name);
+        RAISE NOTICE 'Fixed INTEGER sequence for table: gremory.%', r.table_name;
+    END LOOP;
+    
+    -- Special handling for function_call_logs which uses UUID primary key
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'gremory' AND table_name = 'function_call_logs') THEN
+        RAISE NOTICE 'Skipped function_call_logs - uses UUID primary key, not sequence';
+    END IF;
+    
+    RAISE NOTICE 'All sequences have been fixed for gremory schema';
+END $$;
+```

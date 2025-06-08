@@ -18,6 +18,9 @@ from app.configs.config import APIResponse
 from app.logger import logger
 from app.config import settings
 from app.configs.constants import SYSTEM_PROMPT
+# Import for database integration
+from app.services.user_history_service import UserHistoryService
+from app.schemas.user_history_schemas import SendMessageRequest, MessageType
 
 class ChatService:
     def __init__(self):
@@ -29,6 +32,9 @@ class ChatService:
             "openai_gpt4": "gpt-4o",
         }
         self.system_prompt = self._get_system_prompt()
+        
+        # Database integration for persistent history
+        self.history_service: Optional[UserHistoryService] = None
         
         # Centralized history management - one history per session, not per model
         self.conversations: Dict[str, List[Any]] = {}  # session_id -> list of messages
@@ -44,6 +50,10 @@ class ChatService:
     async def initialize(self):
         """Initialize models on startup"""
         logger.info("Initializing chat service...")
+        
+        # Initialize history service for database integration
+        self.history_service = UserHistoryService()
+        await self.history_service.initialize()
         
         # Validate required environment variables
         if not settings.GOOGLE_API_KEY:
@@ -68,6 +78,10 @@ class ChatService:
         logger.info("Cleaning up chat service...")
         self.models.clear()
         self.conversations.clear()
+        
+        # Cleanup history service
+        if self.history_service:
+            await self.history_service.cleanup()
 
     def _get_or_create_model(self, model_name: str) -> BaseLanguageModel:
         """Get cached model or create new one"""
@@ -472,3 +486,180 @@ class ChatService:
         except Exception as e:
             logger.error(f"Error switching model: {str(e)}")
             return False
+
+    async def get_ai_response_with_conversation(
+        self, 
+        model_name: str, 
+        user_prompt: str, 
+        user_id: int,
+        conversation_id: Optional[int] = None
+    ) -> APIResponse:
+        """Get AI response with database conversation integration"""
+        api_response = APIResponse()
+        
+        try:
+            logger.debug(f"=== AI RESPONSE WITH CONVERSATION START ===")
+            logger.debug(f"Model: {model_name}, User: {user_id}, Conversation: {conversation_id}")
+            logger.debug(f"User prompt: '{user_prompt}'")
+            
+            # Ensure history service is available
+            if not self.history_service:
+                api_response.code = -1
+                api_response.data = None
+                api_response.msg = "History service not initialized"
+                return api_response
+            
+            # If no conversation_id provided, create a new conversation
+            if conversation_id is None:
+                # Generate conversation title from user prompt
+                title = await self._generate_conversation_title(user_prompt)
+                
+                conversation_result = await self.history_service.create_chat_history(
+                    user_id=user_id,
+                    title=title,
+                    conversation_type="bot",
+                    description=f"AI conversation using {model_name}"
+                )
+                
+                if not conversation_result.success or not conversation_result.data:
+                    api_response.code = -1
+                    api_response.data = None
+                    api_response.msg = f"Failed to create conversation: {conversation_result.message}"
+                    return api_response
+                
+                conversation_id = conversation_result.data.id
+                logger.info(f"Created new conversation {conversation_id} for user {user_id}")
+            
+            # Store user message in database
+            user_message_request = SendMessageRequest(
+                conversation_id=conversation_id,
+                sender_id=user_id,
+                content=user_prompt,
+                message_type=MessageType.TEXT
+            )
+            
+            user_message_result = await self.history_service.send_message(user_message_request)
+            if not user_message_result.success:
+                logger.warning(f"Failed to store user message: {user_message_result.message}")
+            
+            # Get conversation history from database
+            conversation_history = await self.history_service.get_conversation_details(conversation_id, user_id)
+            
+            # Prepare messages for the model
+            messages: List[Any] = [SystemMessage(self.system_prompt)]
+            
+            if conversation_history.success and conversation_history.data and conversation_history.data.messages:
+                # Convert database messages to LangChain messages
+                for msg in conversation_history.data.messages[:-1]:  # Exclude the just-added user message
+                    if msg.message_type in ['text', 'TEXT']:
+                        if msg.sender_id == user_id:
+                            messages.append(HumanMessage(msg.content))
+                        else:
+                            messages.append(AIMessage(msg.content))
+                    elif msg.message_type == 'ai_response':
+                        messages.append(AIMessage(msg.content))
+            
+            # Add current user message
+            messages.append(HumanMessage(user_prompt))
+            
+            # Get the model
+            model = self._get_or_create_model(model_name)
+            
+            # DEBUG: Log final message chain being sent to model
+            logger.debug(f"[{model_name}] Final message chain length: {len(messages)}")
+            for i, msg in enumerate(messages):
+                msg_type = type(msg).__name__
+                content = msg.content
+                if isinstance(content, str):
+                    content_preview = content[:100] + "..." if len(content) > 100 else content
+                else:
+                    content_preview = str(content)[:100] + "..."
+                logger.debug(f"[{model_name}] Final Message {i}: {msg_type} - '{content_preview}'")
+            
+            # Invoke model
+            logger.debug(f"[{model_name}] Invoking model with {len(messages)} messages")
+            response = model.invoke(messages)
+            
+            # Store AI response in database
+            ai_message_request = SendMessageRequest(
+                conversation_id=conversation_id,
+                sender_id=user_id,  # We'll use the user_id for now, could create a bot user later
+                content=response.content,
+                message_type=MessageType.AI_RESPONSE,
+                message_metadata={"model_used": model_name}
+            )
+            
+            ai_message_result = await self.history_service.send_message(ai_message_request)
+            if not ai_message_result.success:
+                logger.warning(f"Failed to store AI message: {ai_message_result.message}")
+            
+            # DEBUG: Log model response
+            response_content = response.content
+            if isinstance(response_content, str):
+                response_preview = response_content[:100] + "..." if len(response_content) > 100 else response_content
+            else:
+                response_preview = str(response_content)[:100] + "..."
+            logger.debug(f"[{model_name}] Model response: '{response_preview}'")
+            
+            # Extract the final answer
+            extracted = self._extract_final_answer(response.content)
+            
+            # Set up the API response data structure
+            api_response.code = 0
+            api_response.data = {
+                "answer": extracted['answer'],
+                "model_used": model_name,
+                "conversation_id": conversation_id,
+                "user_id": user_id,
+                "has_reasoning": extracted['reasoning'] is not None,
+                "message_count": len(conversation_history.data.messages) + 1 if (conversation_history.success and conversation_history.data and conversation_history.data.messages) else 2
+            }
+            
+            # Optionally include reasoning in response for debugging
+            if extracted['reasoning'] and hasattr(settings, 'INCLUDE_REASONING') and settings.INCLUDE_REASONING:
+                api_response.data["reasoning"] = extracted['reasoning']
+            
+            logger.debug(f"=== AI RESPONSE WITH CONVERSATION END ===")
+            api_response.msg = "Response generated successfully"
+            return api_response
+            
+        except ValueError as e:
+            logger.warning(f"Validation error in get_ai_response_with_conversation: {str(e)}")
+            api_response.code = -1
+            api_response.data = None
+            api_response.msg = str(e)
+            return api_response
+            
+        except Exception as e:
+            logger.error(f"Error in get_ai_response_with_conversation: {str(e)}")
+            api_response.code = -1
+            api_response.data = None
+            api_response.msg = "Failed to generate AI response"
+            return api_response
+
+    async def _generate_conversation_title(self, user_prompt: str) -> str:
+        """Generate a conversation title from the first user message"""
+        try:
+            # Use a simple model to generate title
+            if "ollama_qwen" in self.models:
+                model = self.models["ollama_qwen"]
+            else:
+                model = self._get_or_create_model("ollama_qwen")
+            
+            title_prompt = f"""Generate a short, descriptive title (max 50 characters) for a conversation that starts with this user message: "{user_prompt[:200]}"
+
+Return only the title, nothing else."""
+            
+            response = model.invoke([HumanMessage(title_prompt)])
+            title = response.content.strip().strip('"').strip("'")
+            
+            # Fallback to truncated user prompt if generation fails
+            if len(title) > 50 or len(title) < 3:
+                title = user_prompt[:47] + "..." if len(user_prompt) > 50 else user_prompt
+            
+            return title
+            
+        except Exception as e:
+            logger.warning(f"Failed to generate conversation title: {str(e)}")
+            # Fallback to truncated user prompt
+            return user_prompt[:47] + "..." if len(user_prompt) > 50 else user_prompt
