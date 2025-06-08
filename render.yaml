@@ -11,7 +11,7 @@ services:
     plan: free  # or free for development
     branch: main
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    # startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     autoDeploy: true
     healthCheckPath: /health
     numInstances: 1
@@ -20,65 +20,65 @@ services:
       maxInstances: 3
       targetMemoryPercent: 70
       targetCPUPercent: 70
-    envVars:
-      - key: GOOGLE_API_KEY
-        sync: false  # Set this manually in Render dashboard for security
-      - key: OPENAI_API_KEY
-        sync: false  # Set this manually in Render dashboard for security
-      - key:  MAX_HISTORY_LENGTH
-        value: 10
-      - key:  ENABLE_SUMMARIZATION
-        value: true
-      - key:  SUMMARY_THRESHOLD
-        value: 10
-      - key: INCLUDE_REASONING
-        value: "false"
-      - key: LOG_LEVEL
-        value: "INFO"
-      - key: ENVIRONMENT
-        value: "production"
-      - key: PORT
-        value: "8000"
-      - fromGroup: chat-api-settings
+#     envVars:
+#       - key: GOOGLE_API_KEY
+#         sync: false  # Set this manually in Render dashboard for security
+#       - key: OPENAI_API_KEY
+#         sync: false  # Set this manually in Render dashboard for security
+#       - key:  MAX_HISTORY_LENGTH
+#         value: 10
+#       - key:  ENABLE_SUMMARIZATION
+#         value: true
+#       - key:  SUMMARY_THRESHOLD
+#         value: 10
+#       - key: INCLUDE_REASONING
+#         value: "false"
+#       - key: LOG_LEVEL
+#         value: "INFO"
+#       - key: ENVIRONMENT
+#         value: "production"
+#       - key: PORT
+#         value: "8000"
+#       - fromGroup: chat-api-settings
 
-  # Optional: Separate staging environment
-  - type: web
-    runtime: python
-    name: gremory-chat-api-staging
-    repo: https://github.com/vkstark/gremory-backend
-    region: oregon
-    plan: free
-    branch: develop  # or staging branch
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --reload
-    autoDeploy: true
-    healthCheckPath: /health
-    envVars:
-      - key: GOOGLE_API_KEY
-        sync: false
-      - key: INCLUDE_REASONING
-        value: "true"  # Enable for debugging in staging
-      - key: LOG_LEVEL
-        value: "DEBUG"
-      - key: ENVIRONMENT
-        value: "staging"
-      - key: PORT
-        value: "8000"
+#   # Optional: Separate staging environment
+#   - type: web
+#     runtime: python
+#     name: gremory-chat-api-staging
+#     repo: https://github.com/vkstark/gremory-backend
+#     region: oregon
+#     plan: free
+#     branch: develop  # or staging branch
+#     buildCommand: pip install -r requirements.txt
+#     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --reload
+#     autoDeploy: true
+#     healthCheckPath: /health
+#     envVars:
+#       - key: GOOGLE_API_KEY
+#         sync: false
+#       - key: INCLUDE_REASONING
+#         value: "true"  # Enable for debugging in staging
+#       - key: LOG_LEVEL
+#         value: "DEBUG"
+#       - key: ENVIRONMENT
+#         value: "staging"
+#       - key: PORT
+#         value: "8000"
 
-# Environment variable groups
-envVarGroups:
-  - name: chat-api-settings
-    envVars:
-      - key: MAX_QUERY_LENGTH
-        value: "10000"
-      - key: DEFAULT_MODEL
-        value: "ollama_qwen"
-      - key: TIMEOUT_SECONDS
-        value: "30"
-      - key: CORS_ORIGINS
-        value: "*"  # Restrict in production
-      - key: API_VERSION
-        value: "v1"
+# # Environment variable groups
+# envVarGroups:
+#   - name: chat-api-settings
+#     envVars:
+#       - key: MAX_QUERY_LENGTH
+#         value: "10000"
+#       - key: DEFAULT_MODEL
+#         value: "ollama_qwen"
+#       - key: TIMEOUT_SECONDS
+#         value: "30"
+#       - key: CORS_ORIGINS
+#         value: "*"  # Restrict in production
+#       - key: API_VERSION
+#         value: "v1"
 
 # ===================================================
 # Alternative configuration for Docker deployment
