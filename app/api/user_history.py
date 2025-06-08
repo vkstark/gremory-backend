@@ -1,3 +1,6 @@
+import re
+import json
+
 from fastapi import APIRouter, HTTPException, Depends, Query
 from fastapi.responses import JSONResponse
 from typing import Optional
@@ -51,6 +54,59 @@ def create_error_response(status_code: int, message: str, details: Optional[str]
         error_data["details"] = details
     return JSONResponse(status_code=status_code, content=error_data)
 
+def parse_ai_response_messages_inplace(conversation):
+    """
+    Parse AI response messages in the conversation and replace content with parsed JSON.
+    Works with Pydantic response objects that have success, message, and data attributes.
+    
+    Args:
+        conversation: Pydantic model object with data.messages attribute
+    
+    Returns:
+        Same conversation object with modified AI response message contents
+    """
+    if not conversation or not hasattr(conversation, 'data'):
+        print("Invalid conversation structure - no data attribute found")
+        return conversation
+    
+    if not hasattr(conversation.data, 'messages'):
+        print("Invalid conversation structure - no messages attribute found in data")
+        return conversation
+    
+    # Access messages from the nested data object
+    messages = conversation.data.messages
+    
+    for message in messages:
+        # Check if this is an AI response message
+        if hasattr(message, 'message_type') and message.message_type == 'ai_response':
+            if hasattr(message, 'content') and message.content:
+                # Use the helper function to extract JSON from the content
+                json_match = re.search(r'```json\s*\n(.*?)\n```', message.content, flags=re.DOTALL)
+                
+                if json_match:
+                    try:
+                        # Parse the JSON content
+                        parsed_msg = json.loads(json_match.group(1).strip())
+                        
+                        # Validate that parsed_msg is not None and has expected structure
+                        if parsed_msg is not None and isinstance(parsed_msg, dict):
+                            # Replace the content with the parsed JSON
+                            message.content = parsed_msg
+                            print(f"Successfully parsed message ID: {message.id}")
+                        else:
+                            print(f"Parsed content is invalid for message ID {message.id}")
+                        
+                    except json.JSONDecodeError as e:
+                        print(f"Failed to parse JSON for message ID {message.id}: {e}")
+                        # Keep original content if parsing fails
+                        continue
+                    except Exception as e:
+                        print(f"Unexpected error parsing message ID {message.id}: {e}")
+                        continue
+                else:
+                    print(f"No JSON block found in message ID: {message.id}")
+    return conversation
+
 @router.get("/user/{user_id}/history", response_model=UserHistoryResponse)
 async def get_user_history(
     user_id: int,
@@ -99,6 +155,7 @@ async def get_conversation_details(
     """Get detailed conversation information including messages"""
     try:
         conversation = await service.get_conversation_details(conversation_id, user_id)
+        conversation = parse_ai_response_messages_inplace(conversation)
         return conversation
     except Exception as e:
         logger.error(f"Error getting conversation details {conversation_id}: {str(e)}")
