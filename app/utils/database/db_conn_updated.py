@@ -18,7 +18,7 @@ import time
 import threading
 from contextlib import contextmanager
 from typing import Optional, Dict, Any, List, Union, Type, TypeVar, Generic, Callable
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 from dataclasses import dataclass
 import threading
@@ -121,7 +121,7 @@ class PerformanceMonitor:
                 "min_duration": min(durations),
                 "slow_queries_count": len(self.slow_queries),
                 "queries_per_minute": len([m for m in self.metrics 
-                                         if m.timestamp > datetime.now() - timedelta(minutes=1)])
+                                         if m.timestamp > datetime.now(timezone.utc) - timedelta(minutes=1)])
             }
 
 
@@ -220,7 +220,7 @@ class DatabaseManager:
                 query=statement[:200] + "..." if len(statement) > 200 else statement,
                 duration=duration,
                 rows_affected=cursor.rowcount,
-                timestamp=datetime.now(),
+                timestamp=datetime.now(timezone.utc),
                 session_id=str(session_id)
             )
             
@@ -278,13 +278,13 @@ class DatabaseManager:
                 "status": "healthy",
                 "pool_status": pool_status,
                 "performance": performance_stats,
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
         except Exception as e:
             return {
                 "status": "unhealthy",
                 "error": str(e),
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
 
 
@@ -400,7 +400,7 @@ class BaseRepository(Generic[T]):
         
         # Update timestamp if model has updated_at field
         if hasattr(obj, 'updated_at'):
-            setattr(obj, 'updated_at', datetime.now())
+            setattr(obj, 'updated_at', datetime.now(timezone.utc))
         
         self.session.flush()
         self.logger.debug(f"Updated {self.model_class.__name__} with id: {obj_id}")
@@ -428,7 +428,7 @@ class BaseRepository(Generic[T]):
         if hasattr(obj, 'is_deleted'):
             setattr(obj, 'is_deleted', True)
             if hasattr(obj, 'deleted_at'):
-                setattr(obj, 'deleted_at', datetime.now())
+                setattr(obj, 'deleted_at', datetime.now(timezone.utc))
             self.session.flush()
             self.logger.debug(f"Soft deleted {self.model_class.__name__} with id: {obj_id}")
             return True
@@ -633,7 +633,7 @@ class CacheManager:
         """Get cached value"""
         with self._lock:
             if key in self.cache:
-                if datetime.now() < self.ttl[key]:
+                if datetime.now(timezone.utc) < self.ttl[key]:
                     return self.cache[key]
                 else:
                     # Expired
@@ -646,7 +646,7 @@ class CacheManager:
         ttl = ttl or self.default_ttl
         with self._lock:
             self.cache[key] = value
-            self.ttl[key] = datetime.now() + timedelta(seconds=ttl)
+            self.ttl[key] = datetime.now(timezone.utc) + timedelta(seconds=ttl)
     
     def delete(self, key: str) -> None:
         """Delete cached value"""

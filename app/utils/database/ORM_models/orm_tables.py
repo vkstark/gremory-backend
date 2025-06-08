@@ -8,7 +8,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy.dialects.postgresql import INET
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 
 Base = declarative_base()
@@ -31,8 +31,8 @@ class User(Base):
     last_seen = Column(DateTime)
     registration_completed_at = Column(DateTime)
     guest_expires_at = Column(DateTime)
-    created_at = Column(DateTime, default=func.now())
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
     # Relationships
     sessions = relationship("UserSession", back_populates="user", cascade="all, delete-orphan")
@@ -63,9 +63,9 @@ class UserSession(Base):
     geographic_context = Column(JSONB)
     is_active = Column(Boolean, default=True)
     concurrent_session_group = Column(String(100))  # for multi-device sync
-    created_at = Column(DateTime, default=func.now())
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     expires_at = Column(DateTime)
-    last_activity = Column(DateTime, default=func.now())
+    last_activity = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     
     # Relationships
     user = relationship("User", back_populates="sessions")
@@ -88,8 +88,8 @@ class Conversation(Base):
     created_by = Column(Integer, ForeignKey('users.id'))
     conversation_state = Column(String(20), default='active')
     context_data = Column(JSONB)  # for conversation-specific settings
-    created_at = Column(DateTime, default=func.now())
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     is_archived = Column(Boolean, default=False)
     
     # Relationships
@@ -116,8 +116,8 @@ class Message(Base):
     thread_level = Column(Integer, default=0)
     message_metadata = Column(JSONB)
     processing_status = Column(String(20), default='processed')
-    created_at = Column(DateTime, default=func.now())
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     is_deleted = Column(Boolean, default=False)
     deleted_at = Column(DateTime)
     
@@ -155,8 +155,8 @@ class UserPreference(Base):
     priority_weight = Column(Integer, default=1)  # for conflict resolution
     context_tags = Column(JSONB)  # conditional preferences
     expires_at = Column(DateTime)
-    created_at = Column(DateTime, default=func.now())
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
     # Relationships
     user = relationship("User", back_populates="preferences")
@@ -176,7 +176,7 @@ class MessageAttachment(Base):
     file_name = Column(String(255))
     thumbnail_url = Column(String(500))
     encryption_metadata = Column(JSONB)  # for E2E encrypted files
-    created_at = Column(DateTime, default=func.now())
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     
     # Relationships
     message = relationship("Message", back_populates="attachments")
@@ -210,7 +210,7 @@ class SessionStateSnapshot(Base):
     
     id = Column(Integer, primary_key=True, autoincrement=True)
     session_id = Column(Integer, ForeignKey('user_sessions.id'))
-    snapshot_timestamp = Column(DateTime, default=func.now())
+    snapshot_timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     conversation_state = Column(JSONB)  # compressed state data
     user_context_variables = Column(JSONB)
     active_workflows = Column(JSONB)
@@ -294,7 +294,7 @@ class FunctionCallLog(Base):
     function_category = Column(String(50))
     input_parameters = Column(JSONB)
     output_response = Column(JSONB)
-    execution_start_time = Column(DateTime, default=func.now())
+    execution_start_time = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     execution_end_time = Column(DateTime)
     execution_duration_ms = Column(Integer)
     call_chain_id = Column(UUID(as_uuid=True))  # for multi-step sequences
@@ -385,7 +385,7 @@ class UserBehaviorProfile(Base):
     response_length_preference = Column(String(20))
     topic_interests = Column(JSONB)  # weighted interest scores
     behavioral_segments = Column(JSONB)  # segment memberships
-    last_updated = Column(DateTime, default=func.now())
+    last_updated = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     
     # Relationships
     user = relationship("User", back_populates="behavior_profile")
@@ -404,7 +404,7 @@ class ConversationContext(Base):
     context_priority = Column(Integer)  # for resolution conflicts
     context_lifetime = Column(String(20))  # 'message', 'conversation', 'session'
     inheritance_rules = Column(JSONB)
-    created_at = Column(DateTime, default=func.now())
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     expires_at = Column(DateTime)
     
     # Relationships
@@ -424,7 +424,7 @@ class UserAuthentication(Base):
     is_primary = Column(Boolean, default=False)
     is_active = Column(Boolean, default=True)
     last_used = Column(DateTime)
-    created_at = Column(DateTime, default=func.now())
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     
     # Relationships
     user = relationship("User", back_populates="authentication_methods")
@@ -443,7 +443,7 @@ class UserPermission(Base):
     permission_type = Column(String(20))  # 'read', 'write', 'admin'
     granted_by = Column(Integer, ForeignKey('users.id'))
     expires_at = Column(DateTime)
-    created_at = Column(DateTime, default=func.now())
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     
     # Relationships
     user = relationship("User", back_populates="permissions", foreign_keys=[user_id])
@@ -460,7 +460,7 @@ class UserConsentRecord(Base):
     user_id = Column(Integer, ForeignKey('users.id'))
     consent_type = Column(String(50))  # 'analytics', 'personalization', 'marketing'
     consent_status = Column(Boolean)
-    consent_timestamp = Column(DateTime, default=func.now())
+    consent_timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     consent_mechanism = Column(String(50))  # 'explicit', 'implicit', 'updated'
     legal_basis = Column(String(50))  # 'consent', 'contract', 'legitimate_interest'
     withdrawal_timestamp = Column(DateTime)
@@ -484,7 +484,7 @@ class DataProcessingLog(Base):
     legal_basis = Column(String(50))
     data_retention_applied = Column(Boolean)
     automated_decision_making = Column(Boolean)
-    processing_timestamp = Column(DateTime, default=func.now())
+    processing_timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     
     # Relationships
     user = relationship("User", back_populates="data_processing_logs")
@@ -501,7 +501,7 @@ class EncryptionKey(Base):
     key_type = Column(String(20))  # 'message', 'file', 'user_data'
     encrypted_key = Column(LargeBinary)  # encrypted with master key
     key_metadata = Column(JSONB)
-    created_at = Column(DateTime, default=func.now())
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     expires_at = Column(DateTime)
     is_active = Column(Boolean, default=True)
     
@@ -521,7 +521,7 @@ class EncryptedMessage(Base):
     encrypted_content = Column(LargeBinary)
     encryption_key_id = Column(String(100), ForeignKey('encryption_keys.key_id'))
     content_hash = Column(String(64))  # for integrity verification
-    created_at = Column(DateTime, default=func.now())
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     
     # Relationships
     conversation = relationship("Conversation", back_populates="encrypted_messages")

@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from fastapi.responses import JSONResponse
 from typing import Optional, List
 from pydantic import BaseModel, Field
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.utils.database.db_conn_updated import DatabaseManager
 from app.utils.database.ORM_models.orm_tables import User
@@ -84,14 +84,14 @@ async def create_user(request: CreateUserRequest):
             user_kwargs = {
                 'username': request.username,
                 'email': request.email,
-                'display_name': request.display_name or request.username or f"User_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                'display_name': request.display_name or request.username or f"User_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}",
                 'user_type': request.user_type,
                 'phone_number': request.phone_number,
                 'status': 'active',
                 'timezone': request.timezone,
                 'language_preference': request.language_preference,
-                'created_at': datetime.now(),
-                'updated_at': datetime.now()
+                'created_at': datetime.now(timezone.utc),
+                'updated_at': datetime.now(timezone.utc)
             }
             
             # For guest users, generate a guest session ID
@@ -202,8 +202,8 @@ async def seed_test_users():
                     status="active",
                     timezone="UTC",
                     language_preference="en",
-                    created_at=datetime.now(),
-                    updated_at=datetime.now()
+                    created_at=datetime.now(timezone.utc),
+                    updated_at=datetime.now(timezone.utc)
                 ),
                 User(
                     username="test_user_2",
@@ -213,8 +213,8 @@ async def seed_test_users():
                     status="active",
                     timezone="UTC",
                     language_preference="en",
-                    created_at=datetime.now(),
-                    updated_at=datetime.now()
+                    created_at=datetime.now(timezone.utc),
+                    updated_at=datetime.now(timezone.utc)
                 ),
                 User(
                     username="support_agent",
@@ -224,8 +224,8 @@ async def seed_test_users():
                     status="active",
                     timezone="UTC",
                     language_preference="en",
-                    created_at=datetime.now(),
-                    updated_at=datetime.now()
+                    created_at=datetime.now(timezone.utc),
+                    updated_at=datetime.now(timezone.utc)
                 ),
                 User(
                     username="guest_user",
@@ -236,8 +236,8 @@ async def seed_test_users():
                     status="active",
                     timezone="UTC",
                     language_preference="en",
-                    created_at=datetime.now(),
-                    updated_at=datetime.now()
+                    created_at=datetime.now(timezone.utc),
+                    updated_at=datetime.now(timezone.utc)
                 ),
                 User(
                     username="ai_bot",
@@ -247,8 +247,8 @@ async def seed_test_users():
                     status="active",
                     timezone="UTC",
                     language_preference="en",
-                    created_at=datetime.now(),
-                    updated_at=datetime.now()
+                    created_at=datetime.now(timezone.utc),
+                    updated_at=datetime.now(timezone.utc)
                 )
             ]
             
@@ -290,7 +290,7 @@ async def delete_user(user_id: int):
             # Update user status and timestamp using update() method
             session.query(User).filter(User.id == user_id).update({
                 'status': 'deleted',
-                'updated_at': datetime.now()
+                'updated_at': datetime.now(timezone.utc)
             })
             session.commit()
             

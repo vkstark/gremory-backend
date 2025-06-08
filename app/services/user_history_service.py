@@ -1,7 +1,7 @@
 from typing import Optional, List, Dict, Any, Tuple
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import desc, asc, func, and_, or_
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.utils.database.db_conn_updated import create_db_manager_from_settings, DatabaseManager
 from app.utils.database.ORM_models.orm_tables import User, Conversation, Message
@@ -351,13 +351,13 @@ class UserHistoryService:
                 # Create new conversation
                 conversation = Conversation(
                     type=kwargs.get('conversation_type', 'direct'),
-                    name=title or f"Chat {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+                    name=title or f"Chat {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')}",
                     description=kwargs.get('description'),
                     created_by=user_id,
                     conversation_state='active',
                     context_data=kwargs.get('context_data'),
-                    created_at=datetime.now(),
-                    updated_at=datetime.now()
+                    created_at=datetime.now(timezone.utc),
+                    updated_at=datetime.now(timezone.utc)
                 )
                 
                 session.add(conversation)
@@ -401,7 +401,7 @@ class UserHistoryService:
                 # Update conversation state to active if it was paused/archived
                 if conversation.conversation_state in ['paused', 'archived']:
                     conversation.conversation_state = 'active'
-                    conversation.updated_at = datetime.now()
+                    conversation.updated_at = datetime.now(timezone.utc)
                     session.commit()
                 
                 # Get detailed conversation
@@ -446,14 +446,14 @@ class UserHistoryService:
                     message_type=request.message_type.value,
                     reply_to_id=request.reply_to_id,
                     message_metadata=request.message_metadata,
-                    created_at=datetime.now(),
-                    updated_at=datetime.now()
+                    created_at=datetime.now(timezone.utc),
+                    updated_at=datetime.now(timezone.utc)
                 )
                 
                 session.add(message)
                 
                 # Update conversation updated_at
-                conversation.updated_at = datetime.now()
+                conversation.updated_at = datetime.now(timezone.utc)
                 
                 session.commit()
                 session.refresh(message)
@@ -510,7 +510,7 @@ class UserHistoryService:
                 if updates.context_data is not None:
                     conversation.context_data = updates.context_data
                 
-                conversation.updated_at = datetime.now()
+                conversation.updated_at = datetime.now(timezone.utc)
                 session.commit()
                 
                 # Build response
@@ -561,13 +561,13 @@ class UserHistoryService:
                     Message.is_deleted == False
                 ).update({
                     "is_deleted": True,
-                    "deleted_at": datetime.now()
+                    "deleted_at": datetime.now(timezone.utc)
                 })
                 
                 # Archive the conversation
                 conversation.is_archived = True
                 conversation.conversation_state = "archived"
-                conversation.updated_at = datetime.now()
+                conversation.updated_at = datetime.now(timezone.utc)
                 
                 session.commit()
                 
