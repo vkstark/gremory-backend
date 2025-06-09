@@ -13,7 +13,7 @@ from datetime import datetime
 BASE_URL = "http://localhost:8000"
 USER_HISTORY_URL = f"{BASE_URL}/api/v1"
 
-def test_api_endpoint(method, url, data=None, params=None, expected_status=200, test_name=""):
+def api_endpoint(method, url, data=None, params=None, expected_status=200, test_name=""):
     """Test an API endpoint and return the response"""
     print(f"\n{'='*60}")
     print(f"TEST: {test_name}")
@@ -64,7 +64,7 @@ def run_comprehensive_tests():
     print(f"Testing against: {BASE_URL}")
     
     # Test 1: Health check
-    test_api_endpoint(
+    api_endpoint(
         "GET", 
         f"{USER_HISTORY_URL}/user-history/health",
         test_name="Health Check"
@@ -78,7 +78,7 @@ def run_comprehensive_tests():
         "description": "A test conversation for API testing"
     }
     
-    create_response = test_api_endpoint(
+    create_response = api_endpoint(
         "POST",
         f"{USER_HISTORY_URL}/user/history",
         data=conversation_data,
@@ -108,7 +108,7 @@ def run_comprehensive_tests():
         "message_type": "text"
     }
     
-    test_api_endpoint(
+    api_endpoint(
         "POST",
         f"{USER_HISTORY_URL}/conversation/{conversation_id}/messages",
         data=message_data,
@@ -117,7 +117,7 @@ def run_comprehensive_tests():
     )
     
     # Test 4: Get user history with filters and enum conversion
-    test_api_endpoint(
+    api_endpoint(
         "GET",
         f"{USER_HISTORY_URL}/user/1/history",
         params={
@@ -131,7 +131,7 @@ def run_comprehensive_tests():
     )
     
     # Test 5: Get conversation messages with filters
-    test_api_endpoint(
+    api_endpoint(
         "GET",
         f"{USER_HISTORY_URL}/conversation/{conversation_id}/messages",
         params={
@@ -146,7 +146,7 @@ def run_comprehensive_tests():
     )
     
     # Test 6: Get conversation details
-    test_api_endpoint(
+    api_endpoint(
         "GET",
         f"{USER_HISTORY_URL}/conversation/{conversation_id}",
         params={"user_id": 1},
@@ -159,7 +159,7 @@ def run_comprehensive_tests():
         "description": "Updated description for testing"
     }
     
-    test_api_endpoint(
+    api_endpoint(
         "PUT",
         f"{USER_HISTORY_URL}/conversation/{conversation_id}",
         data=update_data,
@@ -168,7 +168,7 @@ def run_comprehensive_tests():
     )
     
     # Test 8: Continue conversation
-    test_api_endpoint(
+    api_endpoint(
         "PUT",
         f"{USER_HISTORY_URL}/conversation/{conversation_id}/continue",
         params={"user_id": 1},
@@ -176,7 +176,7 @@ def run_comprehensive_tests():
     )
     
     # Test 9: Archive conversation
-    test_api_endpoint(
+    api_endpoint(
         "PUT",
         f"{USER_HISTORY_URL}/conversation/{conversation_id}/archive",
         params={"user_id": 1},
@@ -184,7 +184,7 @@ def run_comprehensive_tests():
     )
     
     # Test 10: Error handling - Invalid conversation ID
-    test_api_endpoint(
+    api_endpoint(
         "GET",
         f"{USER_HISTORY_URL}/conversation/99999",
         params={"user_id": 1},
@@ -193,7 +193,7 @@ def run_comprehensive_tests():
     )
     
     # Test 11: Error handling - Invalid enum values
-    test_api_endpoint(
+    api_endpoint(
         "GET",
         f"{USER_HISTORY_URL}/user/1/history",
         params={
@@ -211,7 +211,7 @@ def run_comprehensive_tests():
         "message_type": "text"
     }
     
-    test_api_endpoint(
+    api_endpoint(
         "POST",
         f"{USER_HISTORY_URL}/conversation/{conversation_id}/messages",
         data=invalid_message_data,
@@ -220,7 +220,7 @@ def run_comprehensive_tests():
     )
     
     # Test 13: Query parameter validation
-    test_api_endpoint(
+    api_endpoint(
         "GET",
         f"{USER_HISTORY_URL}/user/1/history",
         params={
@@ -231,7 +231,7 @@ def run_comprehensive_tests():
     )
     
     # Test 14: Delete conversation (final test)
-    test_api_endpoint(
+    api_endpoint(
         "DELETE",
         f"{USER_HISTORY_URL}/conversation/{conversation_id}",
         params={"user_id": 1},
