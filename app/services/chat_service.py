@@ -560,7 +560,7 @@ class ChatService:
                         json_match = re.search(r'```json\s*\n(.*?)\n```', msg.content, flags=re.DOTALL)
                         if json_match:
                             parsed_msg = json.loads(json_match.group(1).strip())
-                            messages.append(AIMessage(parsed_msg))
+                            messages.append(AIMessage(str(parsed_msg)))
                         else:
                             messages.append(AIMessage(msg.content))
             
