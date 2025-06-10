@@ -15,7 +15,7 @@ from langchain_core.messages import (
 )
 
 from app.configs.config import APIResponse
-from app.logger import logger
+from libs.common_utils.logger import logger
 from app.config import settings
 from app.configs.constants import SYSTEM_PROMPT
 # Import for database integration
@@ -665,6 +665,6 @@ Return only the title, nothing else."""
             return title
             
         except Exception as e:
-            logger.warning(f"Failed to generate conversation title: {str(e)}")
+            logger.warning(f"Failed to generate conversation title: {str(e)}", exc_info=True)
             # Fallback to truncated user prompt
             return user_prompt[:47] + "..." if len(user_prompt) > 50 else user_prompt

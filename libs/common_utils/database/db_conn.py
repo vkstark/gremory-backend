@@ -43,7 +43,7 @@ import tenacity
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from app.config import Settings
-from app.utils.database.ORM_models.orm_tables import Base
+from libs.common_utils.database.tables.orm_tables import Base
 
 # Import your models here
 T = TypeVar('T')

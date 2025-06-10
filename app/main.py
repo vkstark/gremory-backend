@@ -10,7 +10,7 @@ load_dotenv()
 
 # Import routers
 from app.api import chat, user_history, users
-from app.logger import logger
+from libs.common_utils.logger import logger
 
 # # Store initialization functions for all routers
 router_initializers = {

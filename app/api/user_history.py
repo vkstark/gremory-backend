@@ -12,7 +12,7 @@ from app.schemas.user_history_schemas import (
     PaginationParams, ConversationFilters, MessageFilters,
     ConversationType, ConversationState, MessageType
 )
-from app.logger import logger
+from libs.common_utils.logger import logger
 
 router = APIRouter()
 

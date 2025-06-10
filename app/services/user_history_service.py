@@ -3,8 +3,6 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import desc, asc, func, and_, or_
 from datetime import datetime, timezone
 
-from app.utils.database.db_conn_updated import create_db_manager_from_settings, DatabaseManager
-from app.utils.database.ORM_models.orm_tables import User, Conversation, Message
 from app.schemas.user_history_schemas import (
     ConversationSummary, ConversationDetail, MessageResponse,
     UserHistoryResponse, UserMessagesResponse, ConversationResponse,
@@ -13,7 +11,9 @@ from app.schemas.user_history_schemas import (
     PaginationParams, ConversationFilters, MessageFilters
 )
 from app.config import settings
-from app.logger import logger
+from libs.common_utils.logger import logger
+from libs.common_utils.database.db_conn import create_db_manager_from_settings, DatabaseManager
+from libs.common_utils.database.tables.orm_tables import User, Conversation, Message
 
 
 class UserHistoryService:

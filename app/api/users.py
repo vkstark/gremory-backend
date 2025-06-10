@@ -4,9 +4,9 @@ from typing import Optional, List
 from pydantic import BaseModel, Field
 from datetime import datetime, timezone
 
-from app.utils.database.db_conn_updated import DatabaseManager
-from app.utils.database.ORM_models.orm_tables import User
-from app.logger import logger
+from libs.common_utils.database.db_conn import DatabaseManager
+from libs.common_utils.database.tables.orm_tables import User
+from libs.common_utils.logger import logger
 
 router = APIRouter()
 

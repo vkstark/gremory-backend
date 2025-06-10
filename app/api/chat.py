@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 
 from app.configs.config import APIResponse
 from app.services.chat_service import ChatService
-from app.logger import logger
+from libs.common_utils.logger import logger
 
 # Create router instead of FastAPI app
 router = APIRouter()

@@ -196,5 +196,5 @@ cython_debug/
 .cursorindexingignore
 
 # Personal Exclusions
-mypersonal_*
+*mypersonal_*
 *DB.md
