@@ -4,7 +4,48 @@
 
 Gremory enables you to chat using your own models, APIs, and infrastructure. Unlike hosted LLMs, your data stays where **you** choose – in your cloud, database, or offline.
 
-<br>
+---
+---
+# 🚀 Architecture Update
+
+Our system now supports **both Monolithic** and **Microservice (Distributed)** architectures.
+
+---
+
+## 🧱 Running the Monolithic Architecture
+
+> ⚠️ **Note:** This method is maintained for legacy support and **not recommended** for production use.
+
+* Use the `Dockerfile` located in the root directory.
+* To use locally you can the following two commands-
+    - `docker build -f ./Dockerfile -t gremory-monolith .`
+    - `docker run -d -p 80:8000 --env-file .env gremory-monolith` 
+* Configure environment variables:
+
+  * **Preferred:** Set environment variables directly on your cloud provider (e.g., AWS, GCP).
+  * **Alternative (not recommended):**
+
+    * Uncomment the line in the `Dockerfile` to copy the `.env` file from your local machine.
+    * Uncomment the final `CMD` line to export environment variables at runtime.
+
+---
+
+## 🧩 Running the Microservice Architecture
+
+> ✅ **Recommended** for scalability and production-ready deployment.
+
+1. Use the `docker-compose.yaml` at the root of the repository.
+
+2. Build and start services with:
+
+   ```bash
+   COMPOSE_BAKE=true docker compose up --build
+   ```
+
+* Environment variables will be defined during build time as defined through the `docker-compose.yml` file.
+
+---
+---
 
 ## 🔗 Related Projects
 

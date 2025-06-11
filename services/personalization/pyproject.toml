@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "personalization"
+version = "0.1.0"
+description = "Personalization Service: RAG, embedding store, preference logic"
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi==0.115.12",
+  "uvicorn[standard]==0.34.3",
+  "redis==6.2.0",
+  "python-dotenv==1.1.0"
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
