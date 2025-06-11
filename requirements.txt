@@ -41,11 +41,13 @@ langsmith==0.3.43
 markdown-it-py==3.0.0
 MarkupSafe==3.0.2
 mdurl==0.1.2
+numpy==2.3.0
 ollama==0.5.1
 openai==1.84.0
 orjson==3.10.18
 ormsgpack==1.10.0
 packaging==24.2
+pgvector==0.4.1
 pluggy==1.6.0
 proto-plus==1.26.1
 protobuf==6.31.1
