@@ -9,18 +9,19 @@ RUN apt-get update \
 WORKDIR /app
 
 # copy shared libs
-COPY ../../libs/common-utils /app/libs/common-utils
-COPY ../../libs/common-schemas /app/libs/common-schemas
+COPY ../libs/common-utils /app/libs/common-utils
+COPY ../services/user-history /app/services/user-history
 
 # copy this service
-COPY . /app
+COPY ./services/chat-inference /app
 
 # install dependencies
 RUN pip install --no-cache-dir \
       -e /app/libs/common-utils \
-      -e /app/libs/common-schemas \
-      -e /app
+      -e /app/services/user-history \
+      -e /app \
+      -r requirements.txt
 
 # expose if you plan to hit it directly; usually gateway proxies to it
 EXPOSE 8000
-CMD ["uvicorn", "chat_inference.chat:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "src.chat_inference.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -10,18 +10,17 @@ RUN apt-get update \
 WORKDIR /app
 
 # copy shared libs
-COPY ../../libs/common-utils /app/libs/common-utils
-COPY ../../libs/common-schemas /app/libs/common-schemas
+COPY ../libs/common-utils /app/libs/common-utils
 
 # copy this service
-COPY . /app
+COPY ./services/api-gateway /app
 
 # install shared libs + this service
 RUN pip install --no-cache-dir \
       -e /app/libs/common-utils \
-      -e /app/libs/common-schemas \
-      -e /app
+      -e /app \
+      -r requirements.txt
 
 # port and entrypoint
 EXPOSE 8000
-CMD ["uvicorn", "api_gateway.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "src.api_gateway.main:app", "--host", "0.0.0.0", "--port", "8000"]

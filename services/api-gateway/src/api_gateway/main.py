@@ -1,83 +1,89 @@
-from typing import Dict, Any
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from contextlib import asynccontextmanager
-from dotenv import load_dotenv
+from fastapi.responses import JSONResponse
+import httpx
 import os
+from dotenv import load_dotenv
 
-# Load environment variables
 load_dotenv()
 
-from .routes import chat, user_history, users
 from common_utils.logger import logger
 
-
-# # Store initialization functions for all routers
-router_initializers = {
-    "chat": {
-        "init": chat.initialize_chat_service,
-        "cleanup": chat.cleanup_chat_service
-    },
-    "user_history": {
-        "init": user_history.initialize_user_history_service,
-        "cleanup": user_history.cleanup_user_history_service
-    },
-    "users": {
-        "init": None,  # Users API doesn't need special initialization
-        "cleanup": None
-    }
-    # Add other routers here as you create them
-}
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Startup - Initialize all services
-    logger.info("Starting up application...")
-    
-    for router_name, funcs in router_initializers.items():
-        try:
-            if funcs["init"]:
-                await funcs["init"]()
-                logger.info(f"Initialized {router_name} router")
-        except Exception as e:
-            logger.error(f"Failed to initialize {router_name} router: {str(e)}")
-    
-    yield
-    
-    # Shutdown - Cleanup all services
-    logger.info("Shutting down application...")
-    
-    for router_name, funcs in router_initializers.items():
-        try:
-            if funcs["cleanup"]:
-                await funcs["cleanup"]()
-                logger.info(f"Cleaned up {router_name} router")
-        except Exception as e:
-            logger.error(f"Failed to cleanup {router_name} router: {str(e)}")
-
 app = FastAPI(
-    title="My API Collection",
-    description="Collection of all APIs including AI Chat",
+    title="API Gateway",
+    description="Gateway routing requests to microservices",
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
-    lifespan=lifespan,
 )
 
-# Add CORS middleware if needed
+# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure this properly for production
+    allow_origins=["*"],  # Configure properly for production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# Service URLs - Configure these based on your deployment
+CHAT_SERVICE_URL = os.getenv("CHAT_SERVICE_URL", "http://chat-inference:8000")
+USER_HISTORY_SERVICE_URL = os.getenv("USER_HISTORY_SERVICE_URL", "http://user-history:8000")
+USERS_SERVICE_URL = os.getenv("USERS_SERVICE_URL", "http://user-profile:8000")
+
+# Timeout configuration
+REQUEST_TIMEOUT = 30.0
+
+async def proxy_request(request: Request, target_url: str):
+    """Proxy HTTP requests to target microservice"""
+    try:
+        async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
+            # Prepare request data
+            url = f"{target_url}{request.url.path}"
+            if request.url.query:
+                url += f"?{request.url.query}"
+            
+            # Get request body if present
+            body = None
+            if request.method in ["POST", "PUT", "PATCH"]:
+                body = await request.body()
+            
+            # Forward headers (exclude host and content-length)
+            headers = {
+                key: value for key, value in request.headers.items()
+                if key.lower() not in ["host", "content-length"]
+            }
+            
+            # Make request to microservice
+            response = await client.request(
+                method=request.method,
+                url=url,
+                headers=headers,
+                content=body
+            )
+            
+            # Return response
+            return JSONResponse(
+                content=response.json() if response.text else {},
+                status_code=response.status_code,
+                headers=dict(response.headers)
+            )
+            
+    except httpx.TimeoutException:
+        logger.error(f"Timeout while calling {target_url}")
+        raise HTTPException(status_code=504, detail="Service timeout")
+    except httpx.ConnectError:
+        logger.error(f"Connection error while calling {target_url}")
+        raise HTTPException(status_code=503, detail="Service unavailable")
+    except Exception as e:
+        logger.error(f"Error proxying request to {target_url}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
 # Root endpoint
 @app.get("/")
 def read_root():
     return {
-        "message": "Welcome to My API Collection",
+        "message": "API Gateway - Microservices Architecture",
         "docs": "/docs",
         "available_apis": {
             "chat": "/api/v1/chat",
@@ -85,43 +91,161 @@ def read_root():
             "users": "/api/v1/users",
             "models": "/api/v1/models",
             "health": "/health"
+        },
+        "services": {
+            "chat-inference": CHAT_SERVICE_URL,
+            "user-history": USER_HISTORY_SERVICE_URL,
+            "user-profile": USERS_SERVICE_URL
         }
     }
 
 @app.get("/health")
-def main_health_check():
-    return {"status": "healthy", "service": "main-api-collection"}
+async def gateway_health_check():
+    """Health check that also checks all microservices"""
+    services_health = {}
+    overall_healthy = True
+    
+    services = {
+        "chat-service": f"{CHAT_SERVICE_URL}/health",
+        "user-history-service": f"{USER_HISTORY_SERVICE_URL}/health",
+        "users-service": f"{USERS_SERVICE_URL}/health"
+    }
+    
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        for service_name, health_url in services.items():
+            try:
+                response = await client.get(health_url)
+                services_health[service_name] = {
+                    "status": "healthy" if response.status_code == 200 else "unhealthy",
+                    "response_time": response.elapsed.total_seconds()
+                }
+            except Exception as e:
+                services_health[service_name] = {
+                    "status": "unhealthy",
+                    "error": str(e)
+                }
+                overall_healthy = False
+    
+    return {
+        "status": "healthy" if overall_healthy else "degraded",
+        "service": "api-gateway",
+        "services": services_health
+    }
 
-# Include the chat router
-app.include_router(
-    chat.router, 
-    prefix="/api/v1", 
-    tags=["chat"]
-)
+# Chat service routes
+@app.get("/api/v1/chat", tags=["chat"], operation_id="get_chat_info")
+async def get_chat_info(request: Request):
+    path = request.url.path.replace("/api/v1", "")
+    new_request = request
+    new_request._url = request.url.replace(path=path)
+    return await proxy_request(new_request, CHAT_SERVICE_URL)
 
-# Include the user history router
-app.include_router(
-    user_history.router, 
-    prefix="/api/v1", 
-    tags=["user_history"]
-)
+@app.post("/api/v1/chat", tags=["chat"], operation_id="send_chat_message")
+async def send_chat_message(request: Request):
+    path = request.url.path.replace("/api/v1", "")
+    new_request = request
+    new_request._url = request.url.replace(path=path)
+    return await proxy_request(new_request, CHAT_SERVICE_URL)
 
-# Include the users router
-app.include_router(
-    users.router, 
-    prefix="/api/v1", 
-    tags=["users"]
-)
+@app.get("/api/v1/models", tags=["chat"], operation_id="get_supported_models")
+async def get_supported_models(request: Request):
+    path = request.url.path.replace("/api/v1", "")
+    new_request = request
+    new_request._url = request.url.replace(path=path)
+    return await proxy_request(new_request, CHAT_SERVICE_URL)
 
-# Add other routers here as you create them
-# app.include_router(other_router.router, prefix="/api/v1", tags=["other"])
+# User history service routes
+@app.get("/api/v1/user/{user_id}/history", tags=["user_history"], operation_id="get_user_history")
+async def get_user_history_proxy(request: Request):
+    path = request.url.path.replace("/api/v1", "")
+    new_request = request
+    new_request._url = request.url.replace(path=path)
+    return await proxy_request(new_request, USER_HISTORY_SERVICE_URL)
+
+@app.post("/api/v1/user/history", tags=["user_history"], operation_id="create_new_chat_history")
+async def create_chat_history_proxy(request: Request):
+    path = request.url.path.replace("/api/v1", "")
+    new_request = request
+    new_request._url = request.url.replace(path=path)
+    return await proxy_request(new_request, USER_HISTORY_SERVICE_URL)
+
+@app.get("/api/v1/conversation/{conversation_id}", tags=["user_history"], operation_id="get_conversation_details")
+async def get_conversation_details_proxy(request: Request):
+    path = request.url.path.replace("/api/v1", "")
+    new_request = request
+    new_request._url = request.url.replace(path=path)
+    return await proxy_request(new_request, USER_HISTORY_SERVICE_URL)
+
+@app.get("/api/v1/conversation/{conversation_id}/messages", tags=["user_history"], operation_id="get_conversation_messages")
+async def get_conversation_messages_proxy(request: Request):
+    path = request.url.path.replace("/api/v1", "")
+    new_request = request
+    new_request._url = request.url.replace(path=path)
+    return await proxy_request(new_request, USER_HISTORY_SERVICE_URL)
+
+@app.post("/api/v1/conversation/{conversation_id}/messages", tags=["user_history"], operation_id="send_message_to_conversation")
+async def send_message_to_conversation_proxy(request: Request):
+    path = request.url.path.replace("/api/v1", "")
+    new_request = request
+    new_request._url = request.url.replace(path=path)
+    return await proxy_request(new_request, USER_HISTORY_SERVICE_URL)
+
+@app.put("/api/v1/conversation/{conversation_id}", tags=["user_history"], operation_id="update_conversation")
+async def update_conversation_proxy(request: Request):
+    path = request.url.path.replace("/api/v1", "")
+    new_request = request
+    new_request._url = request.url.replace(path=path)
+    return await proxy_request(new_request, USER_HISTORY_SERVICE_URL)
+
+@app.delete("/api/v1/conversation/{conversation_id}", tags=["user_history"], operation_id="delete_conversation")
+async def delete_conversation_proxy(request: Request):
+    path = request.url.path.replace("/api/v1", "")
+    new_request = request
+    new_request._url = request.url.replace(path=path)
+    return await proxy_request(new_request, USER_HISTORY_SERVICE_URL)
+
+# Users service routes
+@app.get("/api/v1/users", tags=["users"], operation_id="list_users")
+async def list_users_proxy(request: Request):
+    path = request.url.path.replace("/api/v1", "")
+    new_request = request
+    new_request._url = request.url.replace(path=path)
+    return await proxy_request(new_request, USERS_SERVICE_URL)
+
+@app.post("/api/v1/users", tags=["users"], operation_id="create_user")
+async def create_user_proxy(request: Request):
+    path = request.url.path.replace("/api/v1", "")
+    new_request = request
+    new_request._url = request.url.replace(path=path)
+    return await proxy_request(new_request, USERS_SERVICE_URL)
+
+@app.get("/api/v1/users/{user_id}", tags=["users"], operation_id="get_user_by_id")
+async def get_user_by_id_proxy(request: Request):
+    path = request.url.path.replace("/api/v1", "")
+    new_request = request
+    new_request._url = request.url.replace(path=path)
+    return await proxy_request(new_request, USERS_SERVICE_URL)
+
+@app.delete("/api/v1/users/{user_id}", tags=["users"], operation_id="delete_user")
+async def delete_user_proxy(request: Request):
+    path = request.url.path.replace("/api/v1", "")
+    new_request = request
+    new_request._url = request.url.replace(path=path)
+    return await proxy_request(new_request, USERS_SERVICE_URL)
+
+@app.post("/api/v1/users/seed-test-data", tags=["users"], operation_id="seed_test_users")
+async def seed_test_users_proxy(request: Request):
+    path = request.url.path.replace("/api/v1", "")
+    new_request = request
+    new_request._url = request.url.replace(path=path)
+    return await proxy_request(new_request, USERS_SERVICE_URL)
 
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
         "main:app", 
         host="0.0.0.0", 
-        port=8000, 
+        port=int(os.getenv("PORT", 8000)),
         reload=True,
         log_level="info"
     )

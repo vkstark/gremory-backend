@@ -9,8 +9,7 @@ RUN apt-get update \
 WORKDIR /app
 
 # shared libs
-COPY ../../libs/common-utils /app/libs/common-utils
-COPY ../../libs/common-schemas /app/libs/common-schemas
+COPY ../libs/common-utils /app/libs/common-utils
 
 # service
 COPY . /app
@@ -18,8 +17,7 @@ COPY . /app
 # install
 RUN pip install --no-cache-dir \
       -e /app/libs/common-utils \
-      -e /app/libs/common-schemas \
-      -e /app
+      -r requirements.txt
 
 EXPOSE 8000
 CMD ["uvicorn", "personalization.routers:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -1,6 +1,4 @@
 # WORK IN PROGRESS
-
-version: "3.8"
 services:
   api-gateway:
     build:
@@ -10,34 +8,49 @@ services:
     depends_on:
       - user-history
       - chat-inference
-      - personalization
+      - user-profile
+      # - personalization
+    env_file:
+      - .env
 
   user-history:
     build:
       context: .
       dockerfile: services/user-history/Dockerfile
     ports: ["8001:8000"]
+    env_file:
+      - .env
 
   chat-inference:
     build:
       context: .
       dockerfile: services/chat-inference/Dockerfile
     ports: ["8002:8000"]
+    env_file:
+      - .env
 
-  personalization:
+  user-profile:
     build:
       context: .
-      dockerfile: services/personalization/Dockerfile
+      dockerfile: services/user-profile/Dockerfile
     ports: ["8003:8000"]
+    env_file:
+      - .env
 
-  postgres:
-    image: postgres:15
-    environment:
-      POSTGRES_USER: app
-      POSTGRES_PASSWORD: secret
-      POSTGRES_DB: appdb
-    ports: ["5432:5432"]
+  # personalization:
+  #   build:
+  #     context: .
+  #     dockerfile: services/personalization/Dockerfile
+  #   ports: ["8003:8000"]
 
-  redis:
-    image: redis:6
-    ports: ["6379:6379"]
+  # postgres:
+  #   image: postgres:15
+  #   environment:
+  #     POSTGRES_USER: app
+  #     POSTGRES_PASSWORD: secret
+  #     POSTGRES_DB: appdb
+  #   ports: ["5432:5432"]
+
+  # redis:
+  #   image: redis:6
+  #   ports: ["6379:6379"]
