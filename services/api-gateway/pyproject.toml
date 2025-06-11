@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "api-gateway"
+version = "0.1.0"
+description = "API Gateway: routes, auth, rate-limit, proxies to downstream services"
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi==0.115.12",
+  "uvicorn[standard]==0.34.3",
+  "python-dotenv==1.1.0",
+  "common-utils"
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

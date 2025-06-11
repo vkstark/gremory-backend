@@ -198,3 +198,4 @@ cython_debug/
 # Personal Exclusions
 *mypersonal_*
 *DB.md
+.vscode/
