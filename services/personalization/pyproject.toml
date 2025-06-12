@@ -9,9 +9,11 @@ description = "Personalization Service: RAG, embedding store, preference logic"
 requires-python = ">=3.10"
 dependencies = [
   "fastapi==0.115.12",
-  "uvicorn[standard]==0.34.3",
+  "uvicorn==0.34.3",
   "redis==6.2.0",
-  "python-dotenv==1.1.0"
+  "python-dotenv==1.1.0",
+  "tenacity==9.1.2",
+  "pgvector==0.4.1"
 ]
 
 [tool.setuptools.packages.find]

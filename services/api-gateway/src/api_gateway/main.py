@@ -27,9 +27,9 @@ app.add_middleware(
 )
 
 # Service URLs - Configure these based on your deployment
-CHAT_SERVICE_URL = os.getenv("CHAT_SERVICE_URL", "http://chat-inference:8000")
-USER_HISTORY_SERVICE_URL = os.getenv("USER_HISTORY_SERVICE_URL", "http://user-history:8000")
-USERS_SERVICE_URL = os.getenv("USERS_SERVICE_URL", "http://user-profile:8000")
+CHAT_SERVICE_URL = os.getenv("CHAT_SERVICE_URL", "http://chat-inference:8002")
+USER_HISTORY_SERVICE_URL = os.getenv("USER_HISTORY_SERVICE_URL", "http://user-history:8001")
+USERS_SERVICE_URL = os.getenv("USERS_SERVICE_URL", "http://user-profile:8003")
 
 # Timeout configuration
 REQUEST_TIMEOUT = 30.0
@@ -133,13 +133,6 @@ async def gateway_health_check():
     }
 
 # Chat service routes
-@app.get("/api/v1/chat", tags=["chat"], operation_id="get_chat_info")
-async def get_chat_info(request: Request):
-    path = request.url.path.replace("/api/v1", "")
-    new_request = request
-    new_request._url = request.url.replace(path=path)
-    return await proxy_request(new_request, CHAT_SERVICE_URL)
-
 @app.post("/api/v1/chat", tags=["chat"], operation_id="send_chat_message")
 async def send_chat_message(request: Request):
     path = request.url.path.replace("/api/v1", "")
