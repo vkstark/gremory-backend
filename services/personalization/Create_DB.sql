@@ -58,7 +58,7 @@ CREATE TABLE personalization.user_embeddings (
     user_id INT NOT NULL,
     embedding_type VARCHAR(50) NOT NULL, -- 'interests', 'communication_style', 'preferences'
     embedding_vector VECTOR(1536), -- Adjust dimension as needed
-    metadata JSONB,
+    meta_data JSONB, -- Changed from 'metadata' to avoid SQLAlchemy conflict
     model_version VARCHAR(50),
     confidence_score DECIMAL(3,2),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -111,7 +111,7 @@ CREATE TABLE personalization.user_experiments (
     variant VARCHAR(50) NOT NULL,
     assigned_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active', 'completed', 'disabled')),
-    metadata JSONB, -- Additional experiment data
+    meta_data JSONB, -- Changed from 'metadata' to avoid SQLAlchemy conflict
     
     UNIQUE(user_id, experiment_name),
     
@@ -123,6 +123,11 @@ CREATE TABLE personalization.user_experiments (
         ON UPDATE CASCADE
 );
 
+-- GIN indexes for JSONB columns (for fast JSON queries)
+CREATE INDEX idx_user_embeddings_meta_data ON personalization.user_embeddings USING GIN(meta_data);
+CREATE INDEX idx_user_experiments_meta_data ON personalization.user_experiments USING GIN(meta_data);
+
+-- All other indexes remain the same...
 -- Performance indexes
 CREATE INDEX idx_user_profiles_static_user_id ON personalization.user_profiles_static(user_id);
 CREATE INDEX idx_user_profiles_static_created_at ON personalization.user_profiles_static(created_at);

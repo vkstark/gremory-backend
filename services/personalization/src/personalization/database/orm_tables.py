@@ -94,7 +94,7 @@ class UserEmbedding(Base):
                      nullable=False)
     embedding_type = Column(String(50), nullable=False)
     embedding_vector = Column(VECTOR(1536))  # Adjust dimension as needed
-    metadata = Column(JSONB)
+    meta_data = Column(JSONB)  # Changed from 'metadata' to avoid conflict
     model_version = Column(String(50))
     confidence_score = Column(Numeric(3, 2))
     created_at = Column(DateTime(timezone=True), default=func.now())
@@ -141,7 +141,7 @@ class UserExperiment(Base):
     variant = Column(String(50), nullable=False)
     assigned_at = Column(DateTime(timezone=True), default=func.now())
     status = Column(String(20), default='active')
-    metadata = Column(JSONB)
+    meta_data = Column(JSONB)  # Changed from 'metadata' to avoid conflict
     
     # Relationships
     user_profile = relationship("UserProfileStatic", back_populates="experiments")
@@ -175,6 +175,6 @@ Index('idx_user_profiles_static_goals', UserProfileStatic.long_term_goals, postg
 Index('idx_user_profiles_dynamic_topics', UserProfileDynamic.recent_topics, postgresql_using='gin')
 Index('idx_user_profiles_dynamic_feedback', UserProfileDynamic.real_time_feedback, postgresql_using='gin')
 Index('idx_user_profiles_dynamic_metrics', UserProfileDynamic.session_metrics, postgresql_using='gin')
-Index('idx_user_embeddings_metadata', UserEmbedding.metadata, postgresql_using='gin')
+Index('idx_user_embeddings_metadata', UserEmbedding.meta_data, postgresql_using='gin')
 Index('idx_user_features_value', UserFeature.feature_value, postgresql_using='gin')
-Index('idx_user_experiments_metadata', UserExperiment.metadata, postgresql_using='gin')
+Index('idx_user_experiments_metadata', UserExperiment.meta_data, postgresql_using='gin')
