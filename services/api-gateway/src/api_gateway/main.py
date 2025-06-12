@@ -31,6 +31,10 @@ CHAT_SERVICE_URL = os.getenv("CHAT_SERVICE_URL", "http://chat-inference:8002")
 USER_HISTORY_SERVICE_URL = os.getenv("USER_HISTORY_SERVICE_URL", "http://user-history:8001")
 USERS_SERVICE_URL = os.getenv("USERS_SERVICE_URL", "http://user-profile:8003")
 
+CHAT_SERVICE_URL = os.getenv("CHAT_SERVICE_URL", "http://localhost:8002")
+USER_HISTORY_SERVICE_URL = os.getenv("USER_HISTORY_SERVICE_URL", "http://localhost:8001")
+USERS_SERVICE_URL = os.getenv("USERS_SERVICE_URL", "http://localhost:8003")
+
 # Timeout configuration
 REQUEST_TIMEOUT = 30.0
 
@@ -238,7 +242,7 @@ if __name__ == "__main__":
     uvicorn.run(
         "main:app", 
         host="0.0.0.0", 
-        port=int(os.getenv("PORT", 8000)),
+        port=int(os.getenv("PORT", 80)),
         reload=True,
         log_level="info"
     )

@@ -18,7 +18,14 @@ from common_utils.schema.response_schema import APIResponse
 from common_utils.logger import logger
 
 from common_utils.main_setting import settings
-from .SYSTEM_PROMPT import SYSTEM_PROMPT
+from .SYSTEM_PROMPT import SAFETY_CORE_PROMPT, PERSONA_ROUTER_PROMPT, RESPONSE_FORMAT_PROMPT, USER_PERSONALIZATION_PROMPT, TOOL_REGISTRY_PROMPT#, SYSTEM_PROMPT 
+
+SYSTEM_PROMPT = (
+    SAFETY_CORE_PROMPT + "\n\n" +
+    PERSONA_ROUTER_PROMPT + "\n\n" +
+    USER_PERSONALIZATION_PROMPT + "\n\n" +
+    RESPONSE_FORMAT_PROMPT
+)
 
 # Import for database integration
 from user_history.user_history_service import UserHistoryService
