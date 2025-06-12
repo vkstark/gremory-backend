@@ -30,13 +30,10 @@ app.add_middleware(
 CHAT_SERVICE_URL = os.getenv("CHAT_SERVICE_URL", "http://chat-inference:8002")
 USER_HISTORY_SERVICE_URL = os.getenv("USER_HISTORY_SERVICE_URL", "http://user-history:8001")
 USERS_SERVICE_URL = os.getenv("USERS_SERVICE_URL", "http://user-profile:8003")
-
-CHAT_SERVICE_URL = os.getenv("CHAT_SERVICE_URL", "http://localhost:8002")
-USER_HISTORY_SERVICE_URL = os.getenv("USER_HISTORY_SERVICE_URL", "http://localhost:8001")
-USERS_SERVICE_URL = os.getenv("USERS_SERVICE_URL", "http://localhost:8003")
+PERSONALIZATION_SERVICE_URL = os.getenv("PERSONALIZATION_SERVICE_URL", "http://personalization:8004")
 
 # Timeout configuration
-REQUEST_TIMEOUT = 30.0
+REQUEST_TIMEOUT = 60.0
 
 async def proxy_request(request: Request, target_url: str):
     """Proxy HTTP requests to target microservice"""
@@ -93,13 +90,15 @@ def read_root():
             "chat": "/api/v1/chat",
             "user_history": "/api/v1/user",
             "users": "/api/v1/users",
+            "personalization": "/api/v1/personalization",
             "models": "/api/v1/models",
             "health": "/health"
         },
         "services": {
             "chat-inference": CHAT_SERVICE_URL,
             "user-history": USER_HISTORY_SERVICE_URL,
-            "user-profile": USERS_SERVICE_URL
+            "user-profile": USERS_SERVICE_URL,
+            "personalization": PERSONALIZATION_SERVICE_URL
         }
     }
 
@@ -112,7 +111,8 @@ async def gateway_health_check():
     services = {
         "chat-service": f"{CHAT_SERVICE_URL}/health",
         "user-history-service": f"{USER_HISTORY_SERVICE_URL}/health",
-        "users-service": f"{USERS_SERVICE_URL}/health"
+        "users-service": f"{USERS_SERVICE_URL}/users-health",
+        "personalization-service": f"{PERSONALIZATION_SERVICE_URL}/health"
     }
     
     async with httpx.AsyncClient(timeout=5.0) as client:
@@ -236,6 +236,56 @@ async def seed_test_users_proxy(request: Request):
     new_request = request
     new_request._url = request.url.replace(path=path)
     return await proxy_request(new_request, USERS_SERVICE_URL)
+
+# Personalization service routes
+@app.post("/api/v1/personalization/profile", tags=["personalization"], operation_id="create_user_profile")
+async def create_user_profile_proxy(request: Request):
+    path = request.url.path.replace("/api/v1/personalization", "")
+    new_request = request
+    new_request._url = request.url.replace(path=path)
+    return await proxy_request(new_request, PERSONALIZATION_SERVICE_URL)
+
+@app.get("/api/v1/personalization/profile/{user_id}", tags=["personalization"], operation_id="get_user_profile")
+async def get_user_profile_proxy(request: Request):
+    path = request.url.path.replace("/api/v1/personalization", "")
+    new_request = request
+    new_request._url = request.url.replace(path=path)
+    return await proxy_request(new_request, PERSONALIZATION_SERVICE_URL)
+
+@app.put("/api/v1/personalization/profile/{user_id}", tags=["personalization"], operation_id="update_user_profile")
+async def update_user_profile_proxy(request: Request):
+    path = request.url.path.replace("/api/v1/personalization", "")
+    new_request = request
+    new_request._url = request.url.replace(path=path)
+    return await proxy_request(new_request, PERSONALIZATION_SERVICE_URL)
+
+@app.post("/api/v1/personalization/activity", tags=["personalization"], operation_id="track_user_activity")
+async def track_user_activity_proxy(request: Request):
+    path = request.url.path.replace("/api/v1/personalization", "")
+    new_request = request
+    new_request._url = request.url.replace(path=path)
+    return await proxy_request(new_request, PERSONALIZATION_SERVICE_URL)
+
+@app.post("/api/v1/personalization/feature", tags=["personalization"], operation_id="set_user_feature")
+async def set_user_feature_proxy(request: Request):
+    path = request.url.path.replace("/api/v1/personalization", "")
+    new_request = request
+    new_request._url = request.url.replace(path=path)
+    return await proxy_request(new_request, PERSONALIZATION_SERVICE_URL)
+
+@app.get("/api/v1/personalization/feature/{user_id}", tags=["personalization"], operation_id="get_user_features")
+async def get_user_features_proxy(request: Request):
+    path = request.url.path.replace("/api/v1/personalization", "")
+    new_request = request
+    new_request._url = request.url.replace(path=path)
+    return await proxy_request(new_request, PERSONALIZATION_SERVICE_URL)
+
+@app.get("/api/v1/personalization/personalization/{user_id}", tags=["personalization"], operation_id="get_user_personalization_data")
+async def get_user_personalization_data_proxy(request: Request):
+    path = request.url.path.replace("/api/v1/personalization", "")
+    new_request = request
+    new_request._url = request.url.replace(path=path)
+    return await proxy_request(new_request, PERSONALIZATION_SERVICE_URL)
 
 if __name__ == "__main__":
     import uvicorn

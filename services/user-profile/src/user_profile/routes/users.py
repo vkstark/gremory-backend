@@ -1,16 +1,19 @@
-# DONE FOR MICROSERVICES
-
+import httpx
+import os
 from fastapi import APIRouter, HTTPException, Depends, Query
 from fastapi.responses import JSONResponse
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 
 from common_utils.database.db_conn import DatabaseManager
 from common_utils.database.tables.orm_tables import User
 from common_utils.logger import logger
 
 router = APIRouter()
+
+# Personalization service configuration
+PERSONALIZATION_SERVICE_URL = os.getenv("PERSONALIZATION_SERVICE_URL", "http://personalization:8004")
 
 # User creation and management schemas
 class CreateUserRequest(BaseModel):
@@ -21,6 +24,17 @@ class CreateUserRequest(BaseModel):
     phone_number: Optional[str] = Field(None, description="Phone number")
     timezone: Optional[str] = Field("UTC", description="User timezone")
     language_preference: Optional[str] = Field("en", description="Language preference")
+    
+    # Enhanced fields for better personalization
+    birthdate: Optional[date] = Field(None, description="User's date of birth for age-based personalization")
+    interests: Optional[List[str]] = Field(None, description="User interests (e.g., ['AI', 'Technology', 'Science'])")
+    goals: Optional[List[str]] = Field(None, description="User goals (e.g., ['Learn Programming', 'Career Growth'])")
+    experience_level: Optional[str] = Field(None, description="Experience level: beginner, intermediate, advanced, expert")
+    communication_style: Optional[str] = Field(None, description="Preferred communication style: formal, casual, friendly, technical")
+    content_preferences: Optional[Dict[str, Any]] = Field(None, description="Content preferences (e.g., {'format': 'detailed', 'examples': True})")
+    onboarding_source: Optional[str] = Field(None, description="How user found the service (e.g., 'google', 'referral', 'social_media')")
+    industry: Optional[str] = Field(None, description="User's industry or field of work")
+    role: Optional[str] = Field(None, description="User's professional role or title")
 
 class UserResponse(BaseModel):
     id: int
@@ -64,6 +78,75 @@ def create_error_response(status_code: int, message: str, details: Optional[str]
         error_data["details"] = details
     return JSONResponse(status_code=status_code, content=error_data)
 
+async def create_personalization_profile(user: User, request: CreateUserRequest):
+    """Create personalization profile for a new user"""
+    try:
+        # Build preferences dictionary from enhanced fields
+        preferences = {}
+        
+        # Add user interests
+        if request.interests:
+            preferences["interests"] = request.interests
+        
+        # Add user goals
+        if request.goals:
+            preferences["goals"] = request.goals
+            
+        # Add experience level
+        if request.experience_level:
+            preferences["experience_level"] = request.experience_level
+            
+        # Add communication style
+        if request.communication_style:
+            preferences["communication_style"] = request.communication_style
+            
+        # Add content preferences
+        if request.content_preferences:
+            preferences["content_preferences"] = request.content_preferences
+            
+        # Add professional info
+        if request.industry:
+            preferences["industry"] = request.industry
+        if request.role:
+            preferences["role"] = request.role
+        
+        # Prepare payload for personalization service
+        payload_data = {
+            "user_id": user.id,
+            "name": user.display_name,
+            "email": user.email,
+            "birthdate": request.birthdate.isoformat() if request.birthdate else None,
+            "language_preference": user.language_preference,
+            "timezone": user.timezone,
+            "signup_source": request.onboarding_source or "user_profile_service_signup",
+            "preferences": preferences if preferences else {}
+        }
+
+        # Remove None values to keep payload clean
+        payload_data = {k: v for k, v in payload_data.items() if v is not None}
+
+        # Construct personalization service URL
+        personalization_profile_url = f"{PERSONALIZATION_SERVICE_URL}/profile"
+        
+        # Make HTTP request to personalization service
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(
+                personalization_profile_url,
+                json=payload_data,
+                headers={"Content-Type": "application/json"}
+            )
+            
+            # Handle response
+            if response.status_code in [200, 201]:
+                logger.info(f"Successfully created personalization profile for user {user.id}")
+            else:
+                logger.error(f"Failed to create personalization profile for user {user.id}. Status: {response.status_code}, Response: {response.text}")
+                
+    except httpx.RequestError as exc:
+        logger.error(f"HTTP request to personalization service failed for user {user.id}: {exc}")
+    except Exception as e:
+        logger.error(f"Unexpected error creating personalization profile for user {user.id}: {e}")
+
 @router.post("/users", response_model=UserCreatedResponse)
 async def create_user(request: CreateUserRequest):
     """Create a new user"""
@@ -106,6 +189,8 @@ async def create_user(request: CreateUserRequest):
             session.add(user)
             session.commit()
             session.refresh(user)
+            # Create personalization profile for the new user
+            await create_personalization_profile(user, request)
             
             user_response = UserResponse.model_validate(user)
             

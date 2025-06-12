@@ -49,7 +49,24 @@ class Settings(BaseSettings):
     DB_LOG_LEVEL: str = "INFO"
     DB_LOG_QUERIES: bool = False
     DB_LOG_SLOW_QUERIES: bool = True
-    
+
+    # URL Structure
+    CHAT_SERVICE_URL: Optional[str] = Field(
+        default="http://localhost:8000/chat",
+        description="Base URL for the chat service"
+    )
+    PERSONALIZATION_SERVICE_URL: Optional[str] = Field(
+        default="http://localhost:8004/personalization",
+        description="Base URL for the personalization service"
+    )
+    USER_HISTORY_SERVICE_URL: Optional[str] = Field(
+        default="http://localhost:8003/user-history",
+        description="Base URL for the user history service"
+    )
+    USERS_SERVICE_URL: Optional[str] = Field(
+        default="http://localhost:8002/users",
+        description="Base URL for the users service"
+    )
     class Config:
         env_file = ".env"
         case_sensitive = True
