@@ -1,180 +1,140 @@
+"""
+Simplified Personalization Schema ORM Tables
+Maps to the unified/simplified database schema that reduces complexity
+while maintaining core functionality.
+"""
 from sqlalchemy import (
-    Column, Integer, String, Date, DateTime, Text, JSON, 
-    Numeric, ForeignKey, CheckConstraint, UniqueConstraint, Index
+    Column, Integer, String, Date, DateTime, Text, DECIMAL, 
+    ForeignKey, CheckConstraint, UniqueConstraint, Index, BigInteger
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from sqlalchemy.dialects.postgresql import JSONB
-from pgvector.sqlalchemy import VECTOR  # Ensure you have the pgvector package installed
+from pgvector.sqlalchemy import VECTOR
 from datetime import datetime, timedelta
 import enum
 
 Base = declarative_base()
 
+# Enums for configuration types
+class ConfigType(enum.Enum):
+    FEATURE = "feature"
+    EXPERIMENT = "experiment"
+    SETTING = "setting"
+
+class ConfigStatus(enum.Enum):
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+    COMPLETED = "completed"
+
 class EmbeddingType(enum.Enum):
     INTERESTS = "interests"
     COMMUNICATION_STYLE = "communication_style"
-    PREFERENCES = "preferences"
     BEHAVIOR = "behavior"
-    CONTENT_AFFINITY = "content_affinity"
 
-class ChangeFrequency(enum.Enum):
-    STATIC = "static"
-    SLOW = "slow"
-    DYNAMIC = "dynamic"
-
-class ExperimentStatus(enum.Enum):
-    ACTIVE = "active"
-    COMPLETED = "completed"
-    DISABLED = "disabled"
-
-class UserProfileStatic(Base):
-    __tablename__ = 'user_profiles_static'
+class UserProfile(Base):
+    """Unified user profiles combining static and dynamic data"""
+    __tablename__ = 'user_profiles'
     __table_args__ = {'schema': 'personalization'}
     
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey('gremory.users.id', ondelete='CASCADE', onupdate='CASCADE'), 
-                     nullable=False, unique=True)
+    user_id = Column(Integer, primary_key=True)
+    
+    # Static profile data
     name = Column(String(255))
     email = Column(String(255))
     birthdate = Column(Date)
     signup_source = Column(String(100))
     language_preference = Column(String(10), default='en')
     timezone = Column(String(50))
-    long_term_goals = Column(JSONB)
-    immutable_preferences = Column(JSONB)
-    created_at = Column(DateTime(timezone=True), default=func.now())
-    updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
+    preferences = Column(JSONB, default={})
     
-    # Relationships
-    dynamic_profiles = relationship("UserProfileDynamic", back_populates="static_profile", cascade="all, delete-orphan")
-    embeddings = relationship("UserEmbedding", back_populates="user_profile", cascade="all, delete-orphan")
-    features = relationship("UserFeature", back_populates="user_profile", cascade="all, delete-orphan")
-    experiments = relationship("UserExperiment", back_populates="user_profile", cascade="all, delete-orphan")
-
-class UserProfileDynamic(Base):
-    __tablename__ = 'user_profiles_dynamic'
-    __table_args__ = (
-        UniqueConstraint('user_id', 'activity_date'),
-        {'schema': 'personalization'}
-    )
-    
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey('gremory.users.id', ondelete='CASCADE', onupdate='CASCADE'), 
-                     nullable=False)
+    # Dynamic activity data
     last_login_at = Column(DateTime(timezone=True))
-    session_message_count = Column(Integer, default=0)
-    daily_activity_count = Column(Integer, default=0)
-    recent_topics = Column(JSONB)
-    real_time_feedback = Column(JSONB)
-    session_metrics = Column(JSONB)
-    activity_date = Column(Date, default=func.current_date())
+    activity_summary = Column(JSONB, default={})  # session counts, daily activity, etc.
+    recent_interactions = Column(JSONB, default={})  # topics, feedback, etc.
+    
     created_at = Column(DateTime(timezone=True), default=func.now())
     updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
-    expires_at = Column(DateTime(timezone=True), default=lambda: datetime.utcnow() + timedelta(days=90))
-    
-    # Relationships
-    static_profile = relationship("UserProfileStatic", back_populates="dynamic_profiles")
 
 class UserEmbedding(Base):
+    """User embeddings for ML/AI features"""
     __tablename__ = 'user_embeddings'
     __table_args__ = (
-        UniqueConstraint('user_id', 'embedding_type'),
         CheckConstraint('confidence_score >= 0.00 AND confidence_score <= 1.00', name='chk_confidence_score'),
-        CheckConstraint(
-            "embedding_type IN ('interests', 'communication_style', 'preferences', 'behavior', 'content_affinity')",
-            name='chk_embedding_type'
-        ),
         {'schema': 'personalization'}
     )
     
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey('gremory.users.id', ondelete='CASCADE', onupdate='CASCADE'), 
-                     nullable=False)
-    embedding_type = Column(String(50), nullable=False)
-    embedding_vector = Column(VECTOR(1536))  # Adjust dimension as needed
-    meta_data = Column(JSONB)  # Changed from 'metadata' to avoid conflict
-    model_version = Column(String(50))
-    confidence_score = Column(Numeric(3, 2))
+    user_id = Column(Integer, primary_key=True)
+    embedding_type = Column(String(50), primary_key=True)  # 'interests', 'communication_style', 'behavior'
+    model_version = Column(String(50), primary_key=True)
+    embedding_vector = Column(VECTOR(1536))
+    confidence_score = Column(DECIMAL(3, 2))
+    meta_data = Column(JSONB, default={})
     created_at = Column(DateTime(timezone=True), default=func.now())
-    updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
     expires_at = Column(DateTime(timezone=True), default=lambda: datetime.utcnow() + timedelta(days=30))
-    
-    # Relationships
-    user_profile = relationship("UserProfileStatic", back_populates="embeddings")
 
-class UserFeature(Base):
-    __tablename__ = 'user_features'
+class UserConfiguration(Base):
+    """Unified configurations (features, experiments, flags)"""
+    __tablename__ = 'user_configurations'
     __table_args__ = (
-        UniqueConstraint('user_id', 'feature_name', 'feature_version'),
-        CheckConstraint("change_frequency IN ('static', 'slow', 'dynamic')", name='chk_change_frequency'),
+        CheckConstraint("config_type IN ('feature', 'experiment', 'setting')", name='chk_config_type'),
+        CheckConstraint("status IN ('active', 'inactive', 'completed')", name='chk_status'),
         {'schema': 'personalization'}
     )
     
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey('gremory.users.id', ondelete='CASCADE', onupdate='CASCADE'), 
-                     nullable=False)
-    feature_name = Column(String(100), nullable=False)
-    feature_value = Column(JSONB, nullable=False)
-    feature_version = Column(String(20), default='1.0')
-    change_frequency = Column(String(20))
+    user_id = Column(Integer, primary_key=True)
+    config_type = Column(String(20), primary_key=True)  # 'feature', 'experiment', 'setting'
+    config_key = Column(String(100), primary_key=True)
+    config_value = Column(JSONB, nullable=False)
+    meta_data = Column(JSONB, default={})
+    status = Column(String(20), default='active')
+    expires_at = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), default=func.now())
     updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
-    expires_at = Column(DateTime(timezone=True))
+
+class UserEvent(Base):
+    """Time-series events (partitioned for performance)"""
+    __tablename__ = 'user_events'
+    __table_args__ = {'schema': 'personalization'}
     
-    # Relationships
-    user_profile = relationship("UserProfileStatic", back_populates="features")
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, nullable=False)
+    event_type = Column(String(50), nullable=False)
+    event_data = Column(JSONB, default={})
+    created_at = Column(DateTime(timezone=True), default=func.now())
 
-class UserExperiment(Base):
-    __tablename__ = 'user_experiments'
-    __table_args__ = (
-        UniqueConstraint('user_id', 'experiment_name'),
-        CheckConstraint("status IN ('active', 'completed', 'disabled')", name='chk_experiment_status'),
-        {'schema': 'personalization'}
-    )
+class UserRecommendation(Base):
+    """Cached recommendations"""
+    __tablename__ = 'user_recommendations'
+    __table_args__ = {'schema': 'personalization'}
     
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey('gremory.users.id', ondelete='CASCADE', onupdate='CASCADE'), 
-                     nullable=False)
-    experiment_name = Column(String(100), nullable=False)
-    variant = Column(String(50), nullable=False)
-    assigned_at = Column(DateTime(timezone=True), default=func.now())
-    status = Column(String(20), default='active')
-    meta_data = Column(JSONB)  # Changed from 'metadata' to avoid conflict
-    
-    # Relationships
-    user_profile = relationship("UserProfileStatic", back_populates="experiments")
+    user_id = Column(Integer, primary_key=True)
+    recommendation_type = Column(String(50), default='general')
+    recommendations = Column(JSONB, nullable=False)
+    meta_data = Column(JSONB, default={})
+    expires_at = Column(DateTime(timezone=True), default=lambda: datetime.utcnow() + timedelta(hours=1))
+    created_at = Column(DateTime(timezone=True), default=func.now())
 
-# Indexes are typically handled by migration files, but here's how you'd define them in SQLAlchemy:
-# Performance indexes
-Index('idx_user_profiles_static_user_id', UserProfileStatic.user_id)
-Index('idx_user_profiles_static_created_at', UserProfileStatic.created_at)
-Index('idx_user_profiles_static_updated_at', UserProfileStatic.updated_at)
+# Performance Indexes
+# User profiles indexes
+Index('idx_user_profiles_last_login', UserProfile.last_login_at)
+Index('idx_user_profiles_updated_at', UserProfile.updated_at)
+Index('idx_user_profiles_preferences', UserProfile.preferences, postgresql_using='gin')
+Index('idx_user_profiles_activity', UserProfile.activity_summary, postgresql_using='gin')
 
-Index('idx_user_profiles_dynamic_user_id', UserProfileDynamic.user_id)
-Index('idx_user_profiles_dynamic_activity_date', UserProfileDynamic.activity_date)
-Index('idx_user_profiles_dynamic_expires_at', UserProfileDynamic.expires_at)
-Index('idx_user_profiles_dynamic_last_login', UserProfileDynamic.last_login_at)
-
-Index('idx_user_embeddings_user_id_type', UserEmbedding.user_id, UserEmbedding.embedding_type)
-Index('idx_user_embeddings_expires_at', UserEmbedding.expires_at)
-Index('idx_user_embeddings_model_version', UserEmbedding.model_version)
+# Embeddings indexes
+Index('idx_user_embeddings_type_expires', UserEmbedding.embedding_type, UserEmbedding.expires_at)
 Index('idx_user_embeddings_confidence', UserEmbedding.confidence_score)
 
-Index('idx_user_features_user_id_name', UserFeature.user_id, UserFeature.feature_name)
-Index('idx_user_features_change_freq', UserFeature.change_frequency)
+# Configurations indexes
+Index('idx_user_configurations_type_status', UserConfiguration.config_type, UserConfiguration.status)
+Index('idx_user_configurations_expires', UserConfiguration.expires_at)
 
-Index('idx_user_experiments_user_id', UserExperiment.user_id)
-Index('idx_user_experiments_status', UserExperiment.status)
-Index('idx_user_experiments_assigned_at', UserExperiment.assigned_at)
+# Events indexes (will apply to partitions)
+Index('idx_user_events_user_type', UserEvent.user_id, UserEvent.event_type)
+Index('idx_user_events_created_at', UserEvent.created_at)
 
-# GIN indexes for JSONB columns (these would typically be in migration files)
-Index('idx_user_profiles_static_preferences', UserProfileStatic.immutable_preferences, postgresql_using='gin')
-Index('idx_user_profiles_static_goals', UserProfileStatic.long_term_goals, postgresql_using='gin')
-Index('idx_user_profiles_dynamic_topics', UserProfileDynamic.recent_topics, postgresql_using='gin')
-Index('idx_user_profiles_dynamic_feedback', UserProfileDynamic.real_time_feedback, postgresql_using='gin')
-Index('idx_user_profiles_dynamic_metrics', UserProfileDynamic.session_metrics, postgresql_using='gin')
-Index('idx_user_embeddings_metadata', UserEmbedding.meta_data, postgresql_using='gin')
-Index('idx_user_features_value', UserFeature.feature_value, postgresql_using='gin')
-Index('idx_user_experiments_metadata', UserExperiment.meta_data, postgresql_using='gin')
+# Recommendations indexes
+Index('idx_user_recommendations_expires', UserRecommendation.expires_at)
+Index('idx_user_recommendations_type', UserRecommendation.recommendation_type)

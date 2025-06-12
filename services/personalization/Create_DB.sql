@@ -1,51 +1,37 @@
--- Create personalization schema
-CREATE SCHEMA IF NOT EXISTS personalization;
+-- ====================================================================
+-- Simplified Personalization Schema
+-- Reduces complexity while maintaining functionality
+-- ====================================================================
 
--- Enable vector extension if using pgvector
+CREATE SCHEMA IF NOT EXISTS personalization;
 CREATE EXTENSION IF NOT EXISTS vector;
 
--- Static user profile data (rarely changes)
-CREATE TABLE personalization.user_profiles_static (
-    id SERIAL PRIMARY KEY,
-    user_id INT NOT NULL UNIQUE,
+-- ====================================================================
+-- CORE TABLES
+-- ====================================================================
+
+-- Unified user profiles (static + dynamic data)
+CREATE TABLE personalization.user_profiles (
+    user_id INT PRIMARY KEY,
+    
+    -- Static profile data
     name VARCHAR(255),
     email VARCHAR(255),
     birthdate DATE,
     signup_source VARCHAR(100),
     language_preference VARCHAR(10) DEFAULT 'en',
     timezone VARCHAR(50),
-    long_term_goals JSONB,
-    immutable_preferences JSONB,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    preferences JSONB DEFAULT '{}',
     
-    -- Cross-schema foreign key constraint with cascading delete
-    CONSTRAINT fk_user_profiles_static_user_id 
-        FOREIGN KEY (user_id) 
-        REFERENCES gremory.users(id) 
-        ON DELETE CASCADE 
-        ON UPDATE CASCADE
-);
-
--- Dynamic user profile data (frequently changing)
-CREATE TABLE personalization.user_profiles_dynamic (
-    id SERIAL PRIMARY KEY,
-    user_id INT NOT NULL,
+    -- Dynamic activity data
     last_login_at TIMESTAMP WITH TIME ZONE,
-    session_message_count INTEGER DEFAULT 0,
-    daily_activity_count INTEGER DEFAULT 0,
-    recent_topics JSONB,
-    real_time_feedback JSONB,
-    session_metrics JSONB,
-    activity_date DATE DEFAULT CURRENT_DATE,
+    activity_summary JSONB DEFAULT '{}', -- session counts, daily activity, etc.
+    recent_interactions JSONB DEFAULT '{}', -- topics, feedback, etc.
+    
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    expires_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() + INTERVAL '90 days',
     
-    UNIQUE(user_id, activity_date),
-    
-    -- Cross-schema foreign key constraint with cascading delete
-    CONSTRAINT fk_user_profiles_dynamic_user_id 
+    CONSTRAINT fk_user_profiles_user_id 
         FOREIGN KEY (user_id) 
         REFERENCES gremory.users(id) 
         ON DELETE CASCADE 
@@ -54,122 +40,167 @@ CREATE TABLE personalization.user_profiles_dynamic (
 
 -- User embeddings for ML/AI features
 CREATE TABLE personalization.user_embeddings (
-    id SERIAL PRIMARY KEY,
-    user_id INT NOT NULL,
-    embedding_type VARCHAR(50) NOT NULL, -- 'interests', 'communication_style', 'preferences'
-    embedding_vector VECTOR(1536), -- Adjust dimension as needed
-    meta_data JSONB, -- Changed from 'metadata' to avoid SQLAlchemy conflict
+    user_id INT,
+    embedding_type VARCHAR(50), -- 'interests', 'communication_style', 'behavior'
     model_version VARCHAR(50),
+    embedding_vector VECTOR(1536),
     confidence_score DECIMAL(3,2),
+    meta_data JSONB DEFAULT '{}',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     expires_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() + INTERVAL '30 days',
     
-    UNIQUE(user_id, embedding_type),
+    PRIMARY KEY (user_id, embedding_type, model_version),
     
-    -- Cross-schema foreign key constraint with cascading delete
     CONSTRAINT fk_user_embeddings_user_id 
         FOREIGN KEY (user_id) 
         REFERENCES gremory.users(id) 
-        ON DELETE CASCADE 
-        ON UPDATE CASCADE,
-        
-    -- Validation constraints
+        ON DELETE CASCADE,
     CONSTRAINT chk_confidence_score 
-        CHECK (confidence_score >= 0.00 AND confidence_score <= 1.00),
-    CONSTRAINT chk_embedding_type 
-        CHECK (embedding_type IN ('interests', 'communication_style', 'preferences', 'behavior', 'content_affinity'))
+        CHECK (confidence_score >= 0.00 AND confidence_score <= 1.00)
 );
 
--- User features for A/B testing and feature flags
-CREATE TABLE personalization.user_features (
-    id SERIAL PRIMARY KEY,
-    user_id INT NOT NULL,
-    feature_name VARCHAR(100) NOT NULL,
-    feature_value JSONB NOT NULL,
-    feature_version VARCHAR(20) DEFAULT '1.0',
-    change_frequency VARCHAR(20) CHECK (change_frequency IN ('static', 'slow', 'dynamic')),
+-- Unified configurations (features, experiments, flags)
+CREATE TABLE personalization.user_configurations (
+    user_id INT,
+    config_type VARCHAR(20), -- 'feature', 'experiment', 'setting'
+    config_key VARCHAR(100),
+    config_value JSONB NOT NULL,
+    meta_data JSONB DEFAULT '{}',
+    status VARCHAR(20) DEFAULT 'active',
+    expires_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    expires_at TIMESTAMP WITH TIME ZONE,
     
-    UNIQUE(user_id, feature_name, feature_version),
+    PRIMARY KEY (user_id, config_type, config_key),
     
-    -- Cross-schema foreign key constraint with cascading delete
-    CONSTRAINT fk_user_features_user_id 
+    CONSTRAINT fk_user_configurations_user_id 
         FOREIGN KEY (user_id) 
         REFERENCES gremory.users(id) 
-        ON DELETE CASCADE 
-        ON UPDATE CASCADE
+        ON DELETE CASCADE,
+    CONSTRAINT chk_config_type 
+        CHECK (config_type IN ('feature', 'experiment', 'setting')),
+    CONSTRAINT chk_status 
+        CHECK (status IN ('active', 'inactive', 'completed'))
 );
 
--- User experiments for A/B testing
-CREATE TABLE personalization.user_experiments (
-    id SERIAL PRIMARY KEY,
+-- Time-series events (partitioned for performance)
+CREATE TABLE personalization.user_events (
+    id BIGSERIAL,
     user_id INT NOT NULL,
-    experiment_name VARCHAR(100) NOT NULL,
-    variant VARCHAR(50) NOT NULL,
-    assigned_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active', 'completed', 'disabled')),
-    meta_data JSONB, -- Changed from 'metadata' to avoid SQLAlchemy conflict
+    event_type VARCHAR(50) NOT NULL,
+    event_data JSONB DEFAULT '{}',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     
-    UNIQUE(user_id, experiment_name),
+    PRIMARY KEY (id, created_at),
     
-    -- Cross-schema foreign key constraint with cascading delete
-    CONSTRAINT fk_user_experiments_user_id 
+    CONSTRAINT fk_user_events_user_id 
         FOREIGN KEY (user_id) 
         REFERENCES gremory.users(id) 
-        ON DELETE CASCADE 
-        ON UPDATE CASCADE
+        ON DELETE CASCADE
+) PARTITION BY RANGE (created_at);
+
+-- Create monthly partitions (example for current period)
+CREATE TABLE personalization.user_events_2025_06 PARTITION OF personalization.user_events
+    FOR VALUES FROM ('2025-06-01') TO ('2025-07-01');
+
+-- Cached recommendations
+CREATE TABLE personalization.user_recommendations (
+    user_id INT PRIMARY KEY,
+    recommendation_type VARCHAR(50) DEFAULT 'general',
+    recommendations JSONB NOT NULL,
+    meta_data JSONB DEFAULT '{}',
+    expires_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() + INTERVAL '1 hour',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    
+    CONSTRAINT fk_user_recommendations_user_id 
+        FOREIGN KEY (user_id) 
+        REFERENCES gremory.users(id) 
+        ON DELETE CASCADE
 );
 
--- GIN indexes for JSONB columns (for fast JSON queries)
-CREATE INDEX idx_user_embeddings_meta_data ON personalization.user_embeddings USING GIN(meta_data);
-CREATE INDEX idx_user_experiments_meta_data ON personalization.user_experiments USING GIN(meta_data);
+-- ====================================================================
+-- PERFORMANCE INDEXES
+-- ====================================================================
 
--- All other indexes remain the same...
--- Performance indexes
-CREATE INDEX idx_user_profiles_static_user_id ON personalization.user_profiles_static(user_id);
-CREATE INDEX idx_user_profiles_static_created_at ON personalization.user_profiles_static(created_at);
-CREATE INDEX idx_user_profiles_static_updated_at ON personalization.user_profiles_static(updated_at);
+-- User profiles indexes
+CREATE INDEX idx_user_profiles_last_login ON personalization.user_profiles(last_login_at);
+CREATE INDEX idx_user_profiles_updated_at ON personalization.user_profiles(updated_at);
+CREATE INDEX idx_user_profiles_preferences ON personalization.user_profiles USING GIN(preferences);
+CREATE INDEX idx_user_profiles_activity ON personalization.user_profiles USING GIN(activity_summary);
 
-CREATE INDEX idx_user_profiles_dynamic_user_id ON personalization.user_profiles_dynamic(user_id);
-CREATE INDEX idx_user_profiles_dynamic_activity_date ON personalization.user_profiles_dynamic(activity_date);
-CREATE INDEX idx_user_profiles_dynamic_expires_at ON personalization.user_profiles_dynamic(expires_at);
-CREATE INDEX idx_user_profiles_dynamic_last_login ON personalization.user_profiles_dynamic(last_login_at);
+-- Embeddings indexes
+CREATE INDEX idx_user_embeddings_type_expires ON personalization.user_embeddings(embedding_type, expires_at);
+CREATE INDEX idx_user_embeddings_confidence ON personalization.user_embeddings(confidence_score) WHERE confidence_score >= 0.8;
 
-CREATE INDEX idx_user_embeddings_user_id_type ON personalization.user_embeddings(user_id, embedding_type);
-CREATE INDEX idx_user_embeddings_expires_at ON personalization.user_embeddings(expires_at);
-CREATE INDEX idx_user_embeddings_model_version ON personalization.user_embeddings(model_version);
-CREATE INDEX idx_user_embeddings_confidence ON personalization.user_embeddings(confidence_score);
+-- Configurations indexes
+CREATE INDEX idx_user_configurations_type_status ON personalization.user_configurations(config_type, status);
+CREATE INDEX idx_user_configurations_expires ON personalization.user_configurations(expires_at) WHERE expires_at IS NOT NULL;
+CREATE UNIQUE INDEX idx_user_configurations_active_experiments ON personalization.user_configurations(user_id, config_key) 
+    WHERE config_type = 'experiment' AND status = 'active';
 
-CREATE INDEX idx_user_features_user_id_name ON personalization.user_features(user_id, feature_name);
-CREATE INDEX idx_user_features_expires_at ON personalization.user_features(expires_at) WHERE expires_at IS NOT NULL;
-CREATE INDEX idx_user_features_change_freq ON personalization.user_features(change_frequency);
+-- Events indexes (on partition)
+CREATE INDEX idx_user_events_user_type ON personalization.user_events_2025_06(user_id, event_type);
+CREATE INDEX idx_user_events_created_at ON personalization.user_events_2025_06(created_at);
 
-CREATE INDEX idx_user_experiments_user_id ON personalization.user_experiments(user_id);
-CREATE INDEX idx_user_experiments_status ON personalization.user_experiments(status);
-CREATE INDEX idx_user_experiments_assigned_at ON personalization.user_experiments(assigned_at);
+-- Recommendations indexes
+CREATE INDEX idx_user_recommendations_expires ON personalization.user_recommendations(expires_at);
+CREATE INDEX idx_user_recommendations_type ON personalization.user_recommendations(recommendation_type);
 
--- GIN indexes for JSONB columns (for fast JSON queries)
-CREATE INDEX idx_user_profiles_static_preferences ON personalization.user_profiles_static USING GIN(immutable_preferences);
-CREATE INDEX idx_user_profiles_static_goals ON personalization.user_profiles_static USING GIN(long_term_goals);
-CREATE INDEX idx_user_profiles_dynamic_topics ON personalization.user_profiles_dynamic USING GIN(recent_topics);
-CREATE INDEX idx_user_profiles_dynamic_feedback ON personalization.user_profiles_dynamic USING GIN(real_time_feedback);
-CREATE INDEX idx_user_profiles_dynamic_metrics ON personalization.user_profiles_dynamic USING GIN(session_metrics);
-CREATE INDEX idx_user_embeddings_metadata ON personalization.user_embeddings USING GIN(metadata);
-CREATE INDEX idx_user_features_value ON personalization.user_features USING GIN(feature_value);
-CREATE INDEX idx_user_experiments_metadata ON personalization.user_experiments USING GIN(metadata);
+-- ====================================================================
+-- HELPER FUNCTIONS
+-- ====================================================================
 
--- Partial indexes for common queries
-CREATE INDEX idx_user_profiles_dynamic_active_sessions 
-ON personalization.user_profiles_dynamic(user_id, last_login_at) 
-WHERE last_login_at > NOW() - INTERVAL '24 hours';
+-- Function to clean up expired data
+CREATE OR REPLACE FUNCTION personalization.cleanup_expired_data()
+RETURNS INTEGER AS $$
+DECLARE
+    deleted_count INTEGER := 0;
+    temp_count INTEGER;
+BEGIN
+    -- Clean expired embeddings
+    DELETE FROM personalization.user_embeddings WHERE expires_at < NOW();
+    GET DIAGNOSTICS temp_count = ROW_COUNT;
+    deleted_count := deleted_count + temp_count;
+    
+    -- Clean expired configurations
+    DELETE FROM personalization.user_configurations WHERE expires_at IS NOT NULL AND expires_at < NOW();
+    GET DIAGNOSTICS temp_count = ROW_COUNT;
+    deleted_count := deleted_count + temp_count;
+    
+    -- Clean expired recommendations
+    DELETE FROM personalization.user_recommendations WHERE expires_at < NOW();
+    GET DIAGNOSTICS temp_count = ROW_COUNT;
+    deleted_count := deleted_count + temp_count;
+    
+    RETURN deleted_count;
+END;
+$$ LANGUAGE plpgsql;
 
-CREATE INDEX idx_user_embeddings_recent 
-ON personalization.user_embeddings(user_id, embedding_type, updated_at) 
-WHERE expires_at > NOW();
+-- ====================================================================
+-- EXAMPLE USAGE PATTERNS
+-- ====================================================================
 
-CREATE INDEX idx_user_experiments_active 
-ON personalization.user_experiments(user_id, experiment_name) 
-WHERE status = 'active';
+-- Get complete user profile
+/*
+SELECT 
+    up.*,
+    json_agg(
+        json_build_object(
+            'type', ue.embedding_type,
+            'confidence', ue.confidence_score,
+            'created_at', ue.created_at
+        )
+    ) FILTER (WHERE ue.user_id IS NOT NULL) as embeddings,
+    json_agg(
+        json_build_object(
+            'config_type', uc.config_type,
+            'config_key', uc.config_key,
+            'config_value', uc.config_value
+        )
+    ) FILTER (WHERE uc.user_id IS NOT NULL) as configurations
+FROM personalization.user_profiles up
+LEFT JOIN personalization.user_embeddings ue ON up.user_id = ue.user_id AND ue.expires_at > NOW()
+LEFT JOIN personalization.user_configurations uc ON up.user_id = uc.user_id AND uc.status = 'active'
+WHERE up.user_id = $1
+GROUP BY up.user_id;
+*/
