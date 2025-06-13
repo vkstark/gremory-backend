@@ -28,10 +28,6 @@ class ConfigStatus(enum.Enum):
     INACTIVE = "inactive"
     COMPLETED = "completed"
 
-class EmbeddingType(enum.Enum):
-    INTERESTS = "interests"
-    COMMUNICATION_STYLE = "communication_style"
-    BEHAVIOR = "behavior"
 
 class UserProfile(Base):
     """Unified user profiles combining static and dynamic data"""
@@ -72,7 +68,7 @@ class UserEmbedding(Base):
     confidence_score = Column(DECIMAL(3, 2))
     meta_data = Column(JSONB, default={})
     created_at = Column(DateTime(timezone=True), default=func.now())
-    expires_at = Column(DateTime(timezone=True), default=lambda: datetime.utcnow() + timedelta(days=30))
+    expires_at = Column(DateTime(timezone=True), default=lambda: datetime.utcnow() + timedelta(days=365))
 
 class UserConfiguration(Base):
     """Unified configurations (features, experiments, flags)"""
@@ -113,7 +109,7 @@ class UserRecommendation(Base):
     recommendation_type = Column(String(50), default='general')
     recommendations = Column(JSONB, nullable=False)
     meta_data = Column(JSONB, default={})
-    expires_at = Column(DateTime(timezone=True), default=lambda: datetime.utcnow() + timedelta(hours=1))
+    expires_at = Column(DateTime(timezone=True), default=lambda: datetime.utcnow() + timedelta(weeks=26))
     created_at = Column(DateTime(timezone=True), default=func.now())
 
 # Performance Indexes

@@ -7,7 +7,7 @@ from datetime import datetime, date
 from common_utils.schema.response_schema import APIResponse
 from common_utils.logger import logger
 from personalization.database.db_conn import PersonalizationService, create_personalization_db_manager
-from personalization.database.orm_tables import ConfigType, ConfigStatus, EmbeddingType, UserProfile, UserConfiguration
+from personalization.database.orm_tables import ConfigType, ConfigStatus, UserProfile, UserConfiguration
 from personalization.schema import (
     UserProfileResponse, CreateUserProfileRequest, UpdateUserProfileRequest,
     UserActivityRequest, UserFeatureRequest, UserFeatureResponse,

@@ -12,8 +12,7 @@ from sqlalchemy.dialects.postgresql import insert
 from common_utils.main_setting import Settings
 from common_utils.database.db_conn import DatabaseManager, BaseRepository, DatabaseException
 from personalization.database.orm_tables import (
-    UserProfile, UserEmbedding, UserConfiguration, UserEvent, UserRecommendation,
-    ConfigType, ConfigStatus, EmbeddingType
+    UserProfile, UserEmbedding, UserConfiguration, UserEvent, UserRecommendation
 )
 
 
