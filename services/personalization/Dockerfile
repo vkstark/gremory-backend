@@ -17,6 +17,7 @@ COPY ./services/personalization /app
 # install
 RUN pip install --no-cache-dir \
       -e /app/libs/common-utils \
+      -e /app \
       -r requirements.txt
 
 # EXPOSE 8000
