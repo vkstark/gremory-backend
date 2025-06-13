@@ -2,6 +2,8 @@ from typing import Dict, Optional, Any, List
 import os
 import re
 import json
+import httpx
+import time
 from langchain_ollama.chat_models import ChatOllama
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
@@ -47,6 +49,13 @@ class ChatService:
         self.max_history_length = getattr(settings, 'MAX_HISTORY_LENGTH', 10)
         self.enable_summarization = getattr(settings, 'ENABLE_SUMMARIZATION', True)
         self.summary_threshold = getattr(settings, 'SUMMARY_THRESHOLD', 10)
+        
+        # Personalization service configuration
+        self.personalization_service_url = os.getenv("PERSONALIZATION_SERVICE_URL", "http://personalization:8004")
+        
+        # TTL cache for personalized system prompts (user_id -> {system_prompt, timestamp})
+        self.personalized_prompts_cache: Dict[int, Dict[str, Any]] = {}
+        self.cache_ttl = 5 * 60  # 5 minutes in seconds
 
     def _get_system_prompt(self) -> str:
         """Define the system prompt for all models"""
@@ -77,6 +86,10 @@ class ChatService:
         except Exception as e:
             logger.error(f"Failed to initialize Ollama model: {str(e)}")
 
+        # Start periodic cache cleanup task
+        # Note: In production, you might want to use a proper task scheduler
+        logger.info(f"Personalization cache TTL set to {self.cache_ttl} seconds")
+        
         logger.info("Chat service initialization complete")
 
     async def cleanup(self):
@@ -84,6 +97,9 @@ class ChatService:
         logger.info("Cleaning up chat service...")
         self.models.clear()
         self.conversations.clear()
+        
+        # Cleanup personalization cache
+        self.personalized_prompts_cache.clear()
         
         # Cleanup history service
         if self.history_service:
@@ -467,7 +483,9 @@ class ChatService:
                 conversation_id=conversation_id,
                 sender_id=user_id,
                 content=user_prompt,
-                message_type=MessageType.TEXT
+                message_type=MessageType.TEXT,
+                reply_to_id=None,
+                message_metadata={}
             )
             
             user_message_result = await self.history_service.send_message(user_message_request)
@@ -477,8 +495,15 @@ class ChatService:
             # Get conversation history from database
             conversation_history = await self.history_service.get_conversation_details(conversation_id, user_id)
             
+            # Get personalized system prompt for this user
+            personalized_system_prompt = await self._get_personalized_system_prompt(user_id)
+            
+            # Log whether we're using personalized or default prompt
+            is_personalized = personalized_system_prompt != self.system_prompt
+            logger.info(f"Using {'personalized' if is_personalized else 'default'} system prompt for user {user_id}")
+            
             # Prepare messages for the model
-            messages: List[Any] = [SystemMessage(self.system_prompt)]
+            messages: List[Any] = [SystemMessage(personalized_system_prompt)]
             
             if conversation_history.success and conversation_history.data and conversation_history.data.messages:
                 # Convert database messages to LangChain messages
@@ -523,6 +548,7 @@ class ChatService:
                 sender_id=user_id,  # We'll use the user_id for now, could create a bot user later
                 content=response.content,
                 message_type=MessageType.AI_RESPONSE,
+                reply_to_id=None,
                 message_metadata={"model_used": model_name}
             )
             
@@ -600,3 +626,152 @@ Return only the title, nothing else."""
             logger.warning(f"Failed to generate conversation title: {str(e)}", exc_info=True)
             # Fallback to truncated user prompt
             return user_prompt[:47] + "..." if len(user_prompt) > 50 else user_prompt
+
+    async def _fetch_user_personalization(self, user_id: int) -> Dict[str, Any]:
+        """Fetch user personalization data from personalization service"""
+        try:
+            personalization_url = f"{self.personalization_service_url}/profile/{user_id}"
+            
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(personalization_url)
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    logger.debug(f"Successfully fetched personalization data for user {user_id}")
+                    return data
+                elif response.status_code == 404:
+                    logger.info(f"No personalization profile found for user {user_id}")
+                    return {}
+                else:
+                    logger.warning(f"Failed to fetch personalization data for user {user_id}. Status: {response.status_code}")
+                    return {}
+                    
+        except httpx.RequestError as exc:
+            logger.error(f"HTTP request to personalization service failed for user {user_id}: {exc}")
+            return {}
+        except Exception as e:
+            logger.error(f"Unexpected error fetching personalization data for user {user_id}: {e}")
+            return {}
+
+    def _create_personalized_system_prompt(self, user_id: int, personalization_data: Dict[str, Any]) -> str:
+        """Create personalized system prompt for a user"""
+        try:
+            # Extract relevant user data
+            user_name = personalization_data.get('name', 'User')
+            preferences = personalization_data.get('preferences', {})
+            
+            # Build user preferences text
+            user_preferences_text = f"User Name: {user_name}\n"
+            
+            if preferences:
+                user_preferences_text += "User Preferences:\n"
+                for key, value in preferences.items():
+                    if value:  # Only include non-empty values
+                        if isinstance(value, list):
+                            user_preferences_text += f"  - {key.replace('_', ' ').title()}: {', '.join(map(str, value))}\n"
+                        elif isinstance(value, dict):
+                            user_preferences_text += f"  - {key.replace('_', ' ').title()}:\n"
+                            for sub_key, sub_value in value.items():
+                                if sub_value:
+                                    user_preferences_text += f"    * {sub_key.replace('_', ' ').title()}: {sub_value}\n"
+                        else:
+                            user_preferences_text += f"  - {key.replace('_', ' ').title()}: {value}\n"
+            else:
+                user_preferences_text += "No specific preferences available.\n"
+            
+            # Create personalized system prompt by formatting the USER_PERSONALIZATION_PROMPT
+            personalized_user_section = USER_PERSONALIZATION_PROMPT.format(
+                user_preferences=user_preferences_text.strip()
+            )
+            
+            # Construct the full personalized system prompt
+            personalized_system_prompt = (
+                SAFETY_CORE_PROMPT + "\n\n" +
+                PERSONA_ROUTER_PROMPT + "\n\n" +
+                personalized_user_section + "\n\n" +
+                RESPONSE_FORMAT_PROMPT
+            )
+            
+            logger.debug(f"Created personalized system prompt for user {user_id}")
+            return personalized_system_prompt
+            
+        except Exception as e:
+            logger.error(f"Error creating personalized system prompt for user {user_id}: {e}")
+            # Fallback to default system prompt
+            return self.system_prompt
+
+    async def _get_personalized_system_prompt(self, user_id: int) -> str:
+        """Get personalized system prompt for user with TTL caching"""
+        try:
+            current_time = time.time()
+            
+            # Check if we have a cached prompt and it's still valid
+            if user_id in self.personalized_prompts_cache:
+                cached_data = self.personalized_prompts_cache[user_id]
+                if current_time - cached_data['timestamp'] < self.cache_ttl:
+                    logger.debug(f"Using cached personalized system prompt for user {user_id}")
+                    return cached_data['system_prompt']
+                else:
+                    logger.debug(f"Cached system prompt expired for user {user_id}, refreshing")
+            
+            # Fetch fresh personalization data
+            personalization_data = await self._fetch_user_personalization(user_id)
+            
+            # Create personalized system prompt
+            personalized_prompt = self._create_personalized_system_prompt(user_id, personalization_data)
+            
+            # Cache the result
+            self.personalized_prompts_cache[user_id] = {
+                'system_prompt': personalized_prompt,
+                'timestamp': current_time
+            }
+            
+            logger.debug(f"Cached new personalized system prompt for user {user_id}")
+            return personalized_prompt
+            
+        except Exception as e:
+            logger.error(f"Error getting personalized system prompt for user {user_id}: {e}")
+            # Fallback to default system prompt
+            return self.system_prompt
+
+    def _cleanup_expired_cache_entries(self):
+        """Clean up expired cache entries"""
+        try:
+            current_time = time.time()
+            expired_users = []
+            
+            for user_id, cached_data in self.personalized_prompts_cache.items():
+                if current_time - cached_data['timestamp'] >= self.cache_ttl:
+                    expired_users.append(user_id)
+            
+            for user_id in expired_users:
+                del self.personalized_prompts_cache[user_id]
+                logger.debug(f"Removed expired cache entry for user {user_id}")
+                
+        except Exception as e:
+            logger.error(f"Error cleaning up cache: {e}")
+
+    def clear_user_cache(self, user_id: int):
+        """Clear cached personalized system prompt for a specific user"""
+        if user_id in self.personalized_prompts_cache:
+            del self.personalized_prompts_cache[user_id]
+            logger.info(f"Cleared personalized system prompt cache for user {user_id}")
+
+    def get_cache_stats(self) -> Dict[str, Any]:
+        """Get cache statistics for monitoring"""
+        current_time = time.time()
+        active_entries = 0
+        expired_entries = 0
+        
+        for cached_data in self.personalized_prompts_cache.values():
+            if current_time - cached_data['timestamp'] < self.cache_ttl:
+                active_entries += 1
+            else:
+                expired_entries += 1
+        
+        return {
+            "total_entries": len(self.personalized_prompts_cache),
+            "active_entries": active_entries,
+            "expired_entries": expired_entries,
+            "cache_ttl_seconds": self.cache_ttl
+        }
