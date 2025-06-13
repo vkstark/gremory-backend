@@ -62,7 +62,7 @@ class UserEmbedding(Base):
     )
     
     user_id = Column(Integer, primary_key=True)
-    embedding_type = Column(String(50), primary_key=True)  # 'interests', 'communication_style', 'behavior'
+    embedding_type = Column(String(200), primary_key=True)  # 'interests', 'communication_style', 'behavior'
     model_version = Column(String(50), primary_key=True)
     embedding_vector = Column(VECTOR(1536))
     confidence_score = Column(DECIMAL(3, 2))

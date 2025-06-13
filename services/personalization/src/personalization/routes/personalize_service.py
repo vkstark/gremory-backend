@@ -119,9 +119,43 @@ async def create_user_profile(
         if not profile_data:
             raise HTTPException(status_code=400, detail="Failed to create user profile")
         
+        # Create embedding for user preferences if they exist
+        preferences = getattr(request, 'preferences', {})
+        embedding_result = None
+        
+        if preferences and any(preferences.values()):
+            try:
+                logger.info(f"Creating embedding for user {request.user_id} preferences")
+                from personalization.embed_logic.async_embedding_service import get_async_embedding_service
+                
+                # Create a new session for embedding creation
+                with service.db_manager.get_session() as embedding_session:
+                    async_embedding_service = get_async_embedding_service()
+                    embedding_result = await async_embedding_service.create_preference_embedding_async(
+                        embedding_session, request.user_id, preferences
+                    )
+                    
+                if embedding_result:
+                    logger.info(f"Successfully created embedding for user {request.user_id}")
+                else:
+                    logger.info(f"Skipped embedding creation for user {request.user_id} - no meaningful preferences")
+                    
+            except Exception as embedding_error:
+                # Log the error but don't fail the profile creation
+                logger.error(f"Failed to create embedding for user {request.user_id}: {str(embedding_error)}")
+        else:
+            logger.info(f"Skipping embedding creation for user {request.user_id} - empty or no preferences")
+        
         response_data = UserProfileResponse.model_validate(profile_data)
+        
+        # Add embedding info to response if available
+        if embedding_result:
+            response_message = f"User profile and preferences embedding created successfully for user {request.user_id}"
+        else:
+            response_message = f"User profile created successfully for user {request.user_id}"
+        
         return UserProfileCreatedResponse(
-            message=f"User profile created successfully for user {request.user_id}",
+            message=response_message,
             data=response_data
         )
         
@@ -169,6 +203,10 @@ async def update_user_profile(
         if not update_data:
             raise HTTPException(status_code=400, detail="No fields to update")
         
+        # Check if preferences are being updated
+        preferences_updated = 'preferences' in update_data
+        new_preferences = update_data.get('preferences', {}) if preferences_updated else {}
+        
         # Use the UserProfileRepository directly
         with service.db_manager.get_session() as session:
             from personalization.database.db_conn import UserProfileRepository
@@ -180,9 +218,46 @@ async def update_user_profile(
         if not updated_profile:
             raise HTTPException(status_code=404, detail=f"User profile not found for user {user_id}")
         
+        # Handle embedding updates if preferences were changed
+        embedding_result = None
+        
+        if preferences_updated:
+            try:
+                logger.info(f"Updating embeddings for user {user_id} due to preference changes")
+                from personalization.embed_logic.async_embedding_service import get_async_embedding_service
+                
+                # Create a new session for embedding operations
+                with service.db_manager.get_session() as embedding_session:
+                    async_embedding_service = get_async_embedding_service()
+                    embedding_result = await async_embedding_service.update_preference_embedding_async(
+                        embedding_session, user_id, new_preferences
+                    )
+                    
+                if embedding_result:
+                    if embedding_result.get("created_new"):
+                        logger.info(f"Successfully updated embedding for user {user_id}")
+                    else:
+                        logger.info(f"Successfully deleted embeddings for user {user_id} (no new preferences)")
+                else:
+                    logger.info(f"No embedding changes needed for user {user_id}")
+                    
+            except Exception as embedding_error:
+                # Log the error but don't fail the profile update
+                logger.error(f"Failed to update embedding for user {user_id}: {str(embedding_error)}")
+        
         response_data = UserProfileResponse.model_validate(updated_profile)
+        
+        # Add embedding info to response message if embedding operations occurred
+        if embedding_result:
+            if embedding_result.get("created_new"):
+                response_message = f"User profile and preferences embedding updated successfully for user {user_id}"
+            else:
+                response_message = f"User profile updated and old embeddings removed for user {user_id}"
+        else:
+            response_message = f"User profile updated successfully for user {user_id}"
+        
         return UserProfileUpdatedResponse(
-            message=f"User profile updated successfully for user {user_id}",
+            message=response_message,
             data=response_data
         )
         
