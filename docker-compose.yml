@@ -50,6 +50,17 @@ services:
       - chat-inference
       - user-profile
       - personalization
+      - ext-tools
+    env_file:
+      - .env
+  
+  ext-tools:
+    build:
+      context: .
+      dockerfile: services/ext-tools/Dockerfile
+    expose: 
+      - '8005'
+    # ports: ["8005:8005"]
     env_file:
       - .env
 

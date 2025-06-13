@@ -3,9 +3,9 @@ requires = ["setuptools>=64", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "personalization"
+name = "external_tools"
 version = "0.1.0"
-description = "Personalization Service: RAG, embedding store, preference logic"
+description = "External_Tools Service: Various Tool Calling"
 requires-python = ">=3.10"
 dependencies = [
   "fastapi==0.115.12",
@@ -13,12 +13,7 @@ dependencies = [
   "redis==6.2.0",
   "python-dotenv==1.1.0",
   "tenacity==9.1.2",
-  "pgvector==0.4.1",
-  "httpx==0.28.1",
-  "openai==1.84.0",
-  "langchain==0.3.25",
-  "langchain-openai==0.3.19",
-  "numpy==2.3.0"
+  "pgvector==0.4.1"
 ]
 
 [tool.setuptools.packages.find]
