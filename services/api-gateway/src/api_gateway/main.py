@@ -31,6 +31,7 @@ CHAT_SERVICE_URL = os.getenv("CHAT_SERVICE_URL", "http://chat-inference:8002")
 USER_HISTORY_SERVICE_URL = os.getenv("USER_HISTORY_SERVICE_URL", "http://user-history:8001")
 USERS_SERVICE_URL = os.getenv("USERS_SERVICE_URL", "http://user-profile:8003")
 PERSONALIZATION_SERVICE_URL = os.getenv("PERSONALIZATION_SERVICE_URL", "http://personalization:8004")
+EXT_TOOLS_SERVICE_URL = os.getenv("EXT_TOOLS_SERVICE_URL", "http://ext-tools:8005")
 
 # Timeout configuration
 REQUEST_TIMEOUT = 60.0
@@ -91,6 +92,7 @@ def read_root():
             "user_history": "/api/v1/user",
             "users": "/api/v1/users",
             "personalization": "/api/v1/personalization",
+            "ext_tools": "/api/v1/tools",
             "models": "/api/v1/models",
             "health": "/health"
         },
@@ -98,7 +100,8 @@ def read_root():
             "chat-inference": CHAT_SERVICE_URL,
             "user-history": USER_HISTORY_SERVICE_URL,
             "user-profile": USERS_SERVICE_URL,
-            "personalization": PERSONALIZATION_SERVICE_URL
+            "personalization": PERSONALIZATION_SERVICE_URL,
+            "ext-tools": EXT_TOOLS_SERVICE_URL
         }
     }
 
@@ -112,7 +115,8 @@ async def gateway_health_check():
         "chat-service": f"{CHAT_SERVICE_URL}/health",
         "user-history-service": f"{USER_HISTORY_SERVICE_URL}/health",
         "users-service": f"{USERS_SERVICE_URL}/users-health",
-        "personalization-service": f"{PERSONALIZATION_SERVICE_URL}/health"
+        "personalization-service": f"{PERSONALIZATION_SERVICE_URL}/health",
+        "ext-tools-service": f"{EXT_TOOLS_SERVICE_URL}/health"
     }
     
     async with httpx.AsyncClient(timeout=5.0) as client:
@@ -286,6 +290,28 @@ async def get_user_personalization_data_proxy(request: Request):
     new_request = request
     new_request._url = request.url.replace(path=path)
     return await proxy_request(new_request, PERSONALIZATION_SERVICE_URL)
+
+# Ext-tools service routes
+@app.get("/api/v1/tools", tags=["ext_tools"], operation_id="list_available_tools")
+async def list_available_tools_proxy(request: Request):
+    path = request.url.path.replace("/api/v1", "")
+    new_request = request
+    new_request._url = request.url.replace(path=path)
+    return await proxy_request(new_request, EXT_TOOLS_SERVICE_URL)
+
+@app.post("/api/v1/execute", tags=["ext_tools"], operation_id="execute_tool")
+async def execute_tool_proxy(request: Request):
+    path = request.url.path.replace("/api/v1", "")
+    new_request = request
+    new_request._url = request.url.replace(path=path)
+    return await proxy_request(new_request, EXT_TOOLS_SERVICE_URL)
+
+@app.get("/api/v1/info", tags=["ext_tools"], operation_id="get_tool_info")
+async def get_tool_info_proxy(request: Request):
+    path = request.url.path.replace("/api/v1", "")
+    new_request = request
+    new_request._url = request.url.replace(path=path)
+    return await proxy_request(new_request, EXT_TOOLS_SERVICE_URL)
 
 if __name__ == "__main__":
     import uvicorn
