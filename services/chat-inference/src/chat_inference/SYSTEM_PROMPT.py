@@ -373,11 +373,11 @@ TOOL_REGISTRY_PROMPT = """
 RESPONSE_FORMAT_PROMPT = """
 ### RESPONSE FORMAT v1.0
 **Default**: plain-text conversational answer.  
-**Structured Output**: Only when tool calls or data tables are involved.  
+**Structured Output**: Only when tool calls are involved.  
 Set flag `needs_structured_output=true` → respond with:
 
 {
-  "actions": [ { "tool": "...", "args": { ... } } ],
+  "actions": [ { "tool": "...", "args": { ... }, "id": { (use the exact id generated) }, "type": "tool_call" }, ...],
   "observation": "...",
   "response": "user-facing text"
 }

@@ -12,7 +12,7 @@ WORKDIR /app
 COPY ../libs/common-utils /app/libs/common-utils
 
 # service
-COPY ./services/ext-tools /app
+COPY ./services/personalization /app
 
 # install
 RUN pip install --no-cache-dir \
@@ -21,4 +21,4 @@ RUN pip install --no-cache-dir \
       -r requirements.txt
 
 # EXPOSE 8000
-CMD ["uvicorn", "src.ext_tools.main:app", "--host", "0.0.0.0", "--port", "8005"]
+CMD ["uvicorn", "src.personalization.main:app", "--host", "0.0.0.0", "--port", "8004"]

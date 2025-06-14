@@ -67,6 +67,10 @@ class Settings(BaseSettings):
         default="http://localhost:8002/users",
         description="Base URL for the users service"
     )
+    EXT_TOOLS_SERVICE_URL: Optional[str] = Field(
+        default="http://localhost:8005/ext-tools",
+        description="Base URL for the external tools service"
+    )
     class Config:
         env_file = ".env"
         case_sensitive = True
