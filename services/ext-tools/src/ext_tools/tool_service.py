@@ -6,7 +6,7 @@ from common_utils.schema.response_schema import APIResponse
 from common_utils.logger import logger
 
 # Import all available tools
-from ext_tools.tools.all_tools import all_tools
+from ext_tools.tools.all_tools import ALL_TOOLS
 
 class ToolService:
     def __init__(self):
@@ -18,7 +18,7 @@ class ToolService:
         logger.info("Initializing tool service...")
         
         # Register all available tools
-        self.tools = all_tools
+        self.tools = ALL_TOOLS
         self.tools_dict = {tool.name.lower(): tool for tool in self.tools}
         
         logger.info(f"Tool service initialized with {len(self.tools)} tools: {list(self.tools_dict.keys())}")
