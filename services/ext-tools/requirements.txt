@@ -9,3 +9,7 @@ openai==1.84.0
 langchain==0.3.25
 langchain-openai==0.3.19
 numpy==2.3.0
+
+# AWS
+boto3==1.38.36
+awscli==1.40.35
