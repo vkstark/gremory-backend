@@ -11,10 +11,6 @@ def get_weather(location: str) -> Optional[Dict]:
 
     Returns:
         Dictionary containing weather information, or error details if failed
-        
-    Example:
-        >>> weather = await get_weather("London", "your-api-key")
-        >>> print(f"Temperature: {weather['temperature_celsius']}°C")
     """
     pass
 
@@ -29,9 +25,5 @@ def add(a: int, b: int) -> Optional[int]:
 
     Returns:
         The sum of a and b
-
-    Example:
-        >>> result = add(2, 3)
-        >>> print(result)
     """
     pass

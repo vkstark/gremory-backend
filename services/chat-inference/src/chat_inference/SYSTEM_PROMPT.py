@@ -367,7 +367,7 @@ If these details affect your response, incorporate them into your reasoning and 
 """
 
 TOOL_REGISTRY_PROMPT = """
-### TOOL REGISTRY v1.0
+If you think a tool is required but is missing a required parameter, ask the user for it.
 """
 
 RESPONSE_FORMAT_PROMPT = """
