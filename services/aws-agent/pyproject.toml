@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aws_agent"
+version = "0.1.0"
+description = "AWS Multi Agent System"
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi==0.115.12",
+  "uvicorn==0.34.3",
+  "langgraph==0.4.8",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
