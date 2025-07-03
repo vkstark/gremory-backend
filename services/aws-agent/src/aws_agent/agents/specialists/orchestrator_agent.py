@@ -44,7 +44,7 @@ Respond with a JSON object containing:
 - primary_service: The main AWS service needed (s3, lambda, sagemaker)
 - secondary_services: List of additional services that might be needed
 - complexity_score: Task complexity from 0.0 (simple) to 1.0 (complex)
-- recommended_specialist: Which specialist agent to use (s3_specialist, lambda_specialist, sagemaker_specialist)
+- recommended_specialist: List of which specialist agent to use (s3_specialist, lambda_specialist, sagemaker_specialist)
 - task_breakdown: List of steps to complete the task
 - estimated_execution_time: Estimated time in seconds
 - requires_coordination: Whether multiple agents are needed
@@ -74,7 +74,7 @@ Analyze this task and provide routing recommendations in the following JSON form
     "primary_service": "s3|lambda|sagemaker",
     "secondary_services": ["service1", "service2"],
     "complexity_score": 0.0-1.0,
-    "recommended_specialist": "s3_specialist|lambda_specialist|sagemaker_specialist",
+    "recommended_specialist": ["s3_specialist", "lambda_specialist", "sagemaker_specialist"],
     "task_breakdown": ["step1", "step2", "step3"],
     "estimated_execution_time": seconds,
     "requires_coordination": true/false,

@@ -113,7 +113,7 @@ class TaskAnalysis(BaseModel):
     primary_service: str = Field(..., description="Primary AWS service needed")
     secondary_services: List[str] = Field(default_factory=list, description="Secondary services that might be needed")
     complexity_score: float = Field(..., description="Task complexity from 0-1")
-    recommended_specialist: str = Field(..., description="Recommended specialist agent")
+    recommended_specialist: List[str] = Field(..., description="Recommended specialist agent")
     task_breakdown: List[str] = Field(..., description="Breakdown of task steps")
     estimated_execution_time: float = Field(..., description="Estimated execution time in seconds")
     requires_coordination: bool = Field(default=False, description="Whether multiple agents are needed")

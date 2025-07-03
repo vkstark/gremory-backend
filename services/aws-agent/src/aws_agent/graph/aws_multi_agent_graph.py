@@ -156,11 +156,11 @@ class AWSMultiAgentGraph:
         
         return state
     
-    def _route_to_specialist(self, state: AWSMultiAgentState) -> str:
+    def _route_to_specialist(self, state: AWSMultiAgentState) -> List[str]:
         """
         Route to the appropriate specialist based on orchestrator analysis.
         """
-        assigned_specialist = state.get("assigned_specialist") or "s3"
+        assigned_specialist = state.get("assigned_specialist") or []
         task_description = state.get("task_description", "")
         
         print(f"DEBUG: Routing - assigned_specialist: {assigned_specialist}")
@@ -168,43 +168,50 @@ class AWSMultiAgentGraph:
         
         # Normalize the specialist name to handle different formats
         specialist_lower = str(assigned_specialist).lower()
+        return assigned_specialist
+        print(f"DEBUG: Routing - specialist_lower: {specialist_lower}")
         
+        func_to_call = []
         if "lambda" in specialist_lower:
             print("DEBUG: Routing to lambda_specialist")
-            return "lambda_specialist"
+            # return "lambda_specialist"
+            func_to_call.append("lambda_specialist")
         elif "sagemaker" in specialist_lower:
             print("DEBUG: Routing to sagemaker_specialist")
-            return "sagemaker_specialist"
+            # return "sagemaker_specialist"
+            func_to_call.append("sagemaker_specialist")
         elif "s3" in specialist_lower:
             print("DEBUG: Routing to s3_specialist")
-            return "s3_specialist"
-        else:
-            # Try to determine from task analysis if available
-            task_analysis = state.get("task_analysis")
-            if task_analysis:
-                primary_service = task_analysis.get("primary_service", "").lower()
-                print(f"DEBUG: Routing fallback - primary_service: {primary_service}")
-                if primary_service == "lambda":
-                    print("DEBUG: Routing to lambda_specialist (from task_analysis)")
-                    return "lambda_specialist"
-                elif primary_service == "sagemaker":
-                    print("DEBUG: Routing to sagemaker_specialist (from task_analysis)")
-                    return "sagemaker_specialist"
-                elif primary_service == "s3":
-                    print("DEBUG: Routing to s3_specialist (from task_analysis)")
-                    return "s3_specialist"
+            # return "s3_specialist"
+            func_to_call.append("s3_specialist")
+        return func_to_call
+        # else:
+        #     # Try to determine from task analysis if available
+        #     task_analysis = state.get("task_analysis")
+        #     if task_analysis:
+        #         primary_service = task_analysis.get("primary_service", "").lower()
+        #         print(f"DEBUG: Routing fallback - primary_service: {primary_service}")
+        #         if primary_service == "lambda":
+        #             print("DEBUG: Routing to lambda_specialist (from task_analysis)")
+        #             return "lambda_specialist"
+        #         elif primary_service == "sagemaker":
+        #             print("DEBUG: Routing to sagemaker_specialist (from task_analysis)")
+        #             return "sagemaker_specialist"
+        #         elif primary_service == "s3":
+        #             print("DEBUG: Routing to s3_specialist (from task_analysis)")
+        #             return "s3_specialist"
             
-            # Final fallback - determine from task description
-            task_description_lower = task_description.lower()
-            if any(keyword in task_description_lower for keyword in ['lambda', 'function', 'serverless']):
-                print("DEBUG: Routing to lambda_specialist (from task_description)")
-                return "lambda_specialist"
-            elif any(keyword in task_description_lower for keyword in ['sagemaker', 'model', 'ml']):
-                print("DEBUG: Routing to sagemaker_specialist (from task_description)")
-                return "sagemaker_specialist"
-            else:
-                print("DEBUG: Routing to s3_specialist (final fallback)")
-                return "s3_specialist"  # Default to S3
+        #     # Final fallback - determine from task description
+        #     task_description_lower = task_description.lower()
+        #     if any(keyword in task_description_lower for keyword in ['lambda', 'function', 'serverless']):
+        #         print("DEBUG: Routing to lambda_specialist (from task_description)")
+        #         return "lambda_specialist"
+        #     elif any(keyword in task_description_lower for keyword in ['sagemaker', 'model', 'ml']):
+        #         print("DEBUG: Routing to sagemaker_specialist (from task_description)")
+        #         return "sagemaker_specialist"
+        #     else:
+        #         print("DEBUG: Routing to s3_specialist (final fallback)")
+        #         return "s3_specialist"  # Default to S3
     
     async def process_task(
         self,
