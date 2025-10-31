@@ -1,0 +1,6 @@
+[run]
+source = src/api_gateway
+
+[report]
+show_missing = true
+skip_covered = true
