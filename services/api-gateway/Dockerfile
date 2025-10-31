@@ -12,13 +12,17 @@ WORKDIR /app
 # copy shared libs
 COPY ../libs/common-utils /app/libs/common-utils
 
-# copy this service
-COPY ./services/api-gateway /app
+# copy this service's source and tests
+COPY ./services/api-gateway/src ./src
+COPY ./services/api-gateway/tests ./tests
+COPY ./services/api-gateway/pyproject.toml .
+COPY ./services/api-gateway/requirements.txt .
+COPY ./services/api-gateway/.coveragerc .
 
 # install shared libs + this service
 RUN pip install --no-cache-dir \
       -e /app/libs/common-utils \
-      -e /app \
+      -e . \
       -r requirements.txt
 
 # port and entrypoint
